@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T06:26:00.305Z",
+  "generated_at": "2026-06-28T06:26:25.294Z",
   "billboards": {
     "2020-000659GAS": {
       "record_id": "2020-000659GAS",
@@ -31156,6 +31156,145 @@
         }
       ],
       "fetched_at": "2026-06-28T06:26:00.305Z"
+    },
+    "KID18": {
+      "record_id": "KID18",
+      "address": "",
+      "lng": -122.42236828299997,
+      "lat": 37.788615169000025,
+      "search_query": "business",
+      "radius_miles": 0.15,
+      "businesses": [
+        {
+          "placeId": "ChIJVVDff7WBhYARU2Pr1-m4_Tk",
+          "name": "Shred Nations",
+          "address": "1410 Franklin St, San Francisco, CA 94109",
+          "latitude": 37.787695,
+          "longitude": -122.423358,
+          "description": null,
+          "website": "https://www.shrednations.com/ca/the-ups-store-21739-94109/?utm_source=gmb&utm_medium=retail&utm_campaign=shred-retail-marketing-google",
+          "rating": null,
+          "numReviews": 0,
+          "primaryType": "Business to business service",
+          "allTypes": [
+            "Business to business service",
+            "Shredding service",
+            "Information services"
+          ],
+          "priceLevel": null,
+          "phoneNumber": "+1 (415) 906-0368",
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJVVDff7WBhYARU2Pr1-m4_Tk"
+        },
+        {
+          "placeId": "ChIJ9aLeE8eAhYAR21igKADwXHQ",
+          "name": "Travis & Travis",
+          "address": "1388 Sutter St, San Francisco, CA 94109",
+          "latitude": 37.7875693,
+          "longitude": -122.4231006,
+          "description": null,
+          "website": "http://travis-travis.com/",
+          "rating": 5,
+          "numReviews": 1,
+          "primaryType": "Law firm",
+          "allTypes": [
+            "Law firm"
+          ],
+          "priceLevel": null,
+          "phoneNumber": null,
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJ9aLeE8eAhYAR21igKADwXHQ"
+        },
+        {
+          "placeId": "ChIJxwf3nZWAhYARvvfSQTQ5HCQ",
+          "name": "Barras Gabriel G CPA",
+          "address": "1388 Sutter St #710, San Francisco, CA 94109",
+          "latitude": 37.7876499,
+          "longitude": -122.4231013,
+          "description": null,
+          "website": null,
+          "rating": null,
+          "numReviews": 0,
+          "primaryType": "Accountant",
+          "allTypes": [
+            "Accountant"
+          ],
+          "priceLevel": null,
+          "phoneNumber": "+1 (415) 421-4990",
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJxwf3nZWAhYARvvfSQTQ5HCQ"
+        }
+      ],
+      "fetched_at": "2026-06-28T06:26:12.900Z"
+    },
+    "EKC50": {
+      "record_id": "EKC50",
+      "address": "",
+      "lng": -122.40815476399996,
+      "lat": 37.78561009900005,
+      "search_query": "business",
+      "radius_miles": 0.15,
+      "businesses": [
+        {
+          "placeId": "ChIJ57R7DYaAhYARPHm9o_3qgcM",
+          "name": "College of Business Enterprises",
+          "address": "835 Market St, San Francisco, CA 94103",
+          "latitude": 37.7842766,
+          "longitude": -122.4065696,
+          "description": null,
+          "website": null,
+          "rating": null,
+          "numReviews": 0,
+          "primaryType": "College",
+          "allTypes": [
+            "College",
+            "University"
+          ],
+          "priceLevel": null,
+          "phoneNumber": "+1 (415) 817-4300",
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJ57R7DYaAhYARPHm9o_3qgcM"
+        },
+        {
+          "placeId": "ChIJk6Az2R2BhYAR8XcVNAbRq1Q",
+          "name": "Bonitasoft",
+          "address": "845 Market St, San Francisco, CA 94103",
+          "latitude": 37.784219,
+          "longitude": -122.40617599999999,
+          "description": null,
+          "website": "https://www.bonitasoft.com/",
+          "rating": null,
+          "numReviews": 0,
+          "primaryType": "Software company",
+          "allTypes": [
+            "Software company"
+          ],
+          "priceLevel": null,
+          "phoneNumber": null,
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJk6Az2R2BhYAR8XcVNAbRq1Q"
+        },
+        {
+          "placeId": "ChIJ298eM4-AhYARjW2o5kALUiU",
+          "name": "Fashion Incubator",
+          "address": "845 Market St, San Francisco, CA 94103",
+          "latitude": 37.784219,
+          "longitude": -122.40617599999999,
+          "description": null,
+          "website": "http://fashionincubatorsf.org/",
+          "rating": 4,
+          "numReviews": 7,
+          "primaryType": "Business development service",
+          "allTypes": [
+            "Business development service"
+          ],
+          "priceLevel": null,
+          "phoneNumber": null,
+          "countryIsoCode": "USA",
+          "googleMapsURL": "https://www.google.com/maps/place/?q=place_id:ChIJ298eM4-AhYARjW2o5kALUiU"
+        }
+      ],
+      "fetched_at": "2026-06-28T06:26:25.294Z"
     }
   }
 }
