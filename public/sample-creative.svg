@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#c2410c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.2" r="0.9">
+      <stop offset="0" stop-color="#ffd9a8" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#fb923c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <circle cx="1040" cy="150" r="220" fill="#ffffff" opacity="0.08"/>
+  <g font-family="ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+    <text x="90" y="150" fill="rgba(255,255,255,0.82)" font-size="30" font-weight="600" letter-spacing="6">ORANGEBOARD</text>
+    <text x="86" y="350" fill="#ffffff" font-size="92" font-weight="800" letter-spacing="-2">
+      <tspan x="86" dy="0">Your billboard,</tspan>
+      <tspan x="86" dy="96">measured like Meta.</tspan>
+    </text>
+    <g transform="translate(90, 560)">
+      <rect x="0" y="-44" rx="32" ry="32" width="320" height="64" fill="#0a0a0a"/>
+      <text x="34" y="0" fill="#ffffff" font-size="34" font-weight="700">Enter your URL →</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+- **ai**: AI helpers (summaries, classifications, scoring).
+- **apify**: Run any of 10,000+ Apify actors for web scraping, social media, e-commerce, and more.
+- **browser**: Kernel browser automation - spin up cloud browsers, execute Playwright code, take screenshots. **Use this for scraping structured lists of repeated data** (e.g., product listings, search results, table rows) where you know the DOM structure. Also ideal for **intercepting network requests** to discover underlying APIs, then paginate those APIs directly in your code (faster & cheaper than clicking through pages). Perfect for JS-heavy sites that don't work with simple HTTP scraping.
+- **company**: company data (getting employees at the company, finding careers pages, getting company data, getting open jobs).
+- **crunchbase**: SQL search over the lean Crunchbase company table (`public.crunchbase_scraper_lean`) for startup prospecting.
+- **person**: finding a persons linkedin url, enriching it from linkedin, contact info, and searching for specific people / groups on linkedin
+- **geo**: parsing address
+- **googleMaps**: search businesses via Google Maps.
+- **email**: send transactional notification emails through Orange Slice's managed sender.
+- **scrape**: website scraper, sitemap scraper
+- **web**: SERP
+- **predictLeads**: company intelligence datasets (financing events, technologies, products, job openings, news, and related company data). Use these as prospecting/enrichment signals, not source-of-truth validation for whether a known company is hiring right now.
+- **integrations**: connect, manage, and **execute** third-party integrations (HubSpot, Salesforce, Attio, Gmail, Slack, Instantly, HeyReach). Use `integrations.connect(provider)` to connect, then `integrations.<provider>.<method>(args)` to execute methods (e.g. `integrations.hubspot.createContact({...})`). Read per-method docs at `./integrations/<provider>/<method>.md` before calling.
+- **skills**: create and manage knowledge skills — reusable knowledge snippets (ICP, templates, product info) that guide AI agents.
+- **guides**: agent notes & operational docs (see [Error Handling Cheatsheet](../error-handling-cheatsheet.md))
