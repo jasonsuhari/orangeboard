@@ -1,14 +1,21 @@
 {
-  "name": "vitaminsee",
+  "name": "peel",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "prefetch": "node scripts/fetch-sf-roads.mjs && node scripts/fetch-sf-ped-counts.mjs",
+    "build": "npm run prefetch && next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.3.5",
+    "@deck.gl/layers": "^9.3.5",
+    "@deck.gl/mapbox": "^9.3.5",
+    "@deck.gl/react": "^9.3.5",
+    "@deck.gl/widgets": "^9.3.5",
+    "@huggingface/transformers": "^4.2.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "mapbox-gl": "^3.9.0",
@@ -16,6 +23,7 @@
     "orangeslice": "^2.6.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-map-gl": "^8.1.1",
     "three": "^0.185.0",
     "zod": "^4.4.3"
   },

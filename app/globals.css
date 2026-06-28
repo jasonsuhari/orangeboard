@@ -67,3 +67,21 @@ body {
 .animate-fade-up {
   animation: fade-up 0.7s ease-out both;
 }
+
+/* Slow top→bottom pan of a full-page website screenshot, like scrolling it.
+   translateY % is relative to the image's own height; +26rem is the viewport
+   height so the bottom of the page lands flush at the end of the pan. */
+@keyframes site-scroll {
+  0%,
+  8% {
+    transform: translateY(0);
+  }
+  92%,
+  100% {
+    transform: translateY(calc(-100% + 26rem));
+  }
+}
+
+.animate-site-scroll {
+  animation: site-scroll 14s ease-in-out infinite alternate;
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildCompanyBrief, normalizeUrl } from "../../lib/companyBrief";
+import { readCachedBrief } from "../../lib/briefCache";
 
 export const maxDuration = 60;
 
@@ -16,6 +17,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Precomputed sites (brief + high-quality creative) return instantly.
+    const cached = await readCachedBrief(url);
+    if (cached) return NextResponse.json({ brief: cached, cached: true });
+
     const brief = await buildCompanyBrief(url);
     return NextResponse.json({ brief });
   } catch (err) {

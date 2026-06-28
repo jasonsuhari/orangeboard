@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VitaminSee — The performance-marketing stack for the physical world",
+  title: "Orangeboard - Passive outbound for physical ABM",
   description:
-    "VitaminSee turns out-of-home advertising into a measurable, testable, viral performance channel — with targeting, testing, and closed-loop attribution. Your daily dose of attention.",
+    "Orangeboard helps B2B teams discover physical-world ICP opportunities, generate local creative, and coordinate outbound around real-world touchpoints.",
 };
 
 export default function RootLayout({

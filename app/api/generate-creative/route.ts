@@ -5,7 +5,10 @@ import { billboardSvgDataUrl, buildCreativePrompt } from "../../lib/creative";
 export const maxDuration = 300;
 
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
-const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
+// Live path favours speed: a fast model at low quality. The high-quality
+// gpt-image-2 path is reserved for the precomputed cache (see scripts/build-brief-cache.mjs).
+const LIVE_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL_LIVE ?? process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
+const LIVE_IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY_LIVE ?? "low";
 
 /** Call OpenAI image generation and return a data URL (b64), so the browser
  *  can use it as a WebGL texture without any CORS hassle. */
@@ -15,10 +18,11 @@ async function generateWithOpenAI(brief: CompanyBrief, apiKey: string): Promise<
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: OPENAI_IMAGE_MODEL,
+      model: LIVE_IMAGE_MODEL,
       prompt,
       n: 1,
       size: "1536x1024", // landscape, billboard-like
+      quality: LIVE_IMAGE_QUALITY,
     }),
     signal: AbortSignal.timeout(180_000),
   });
@@ -42,13 +46,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  // A precomputed (cached) brief already carries its high-quality creative —
+  // serve it straight back instead of regenerating.
+  if (brief.media?.imageUrl) {
+    return NextResponse.json({
+      imageUrl: brief.media.imageUrl,
+      prompt: brief.media.prompt,
+      source: brief.media.source,
+    });
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   const prompt = buildCreativePrompt(brief);
 
   if (apiKey) {
     try {
       const imageUrl = await generateWithOpenAI(brief, apiKey);
-      return NextResponse.json({ imageUrl, prompt, source: "openai" });
+      return NextResponse.json({ imageUrl, prompt, source: "openai", model: LIVE_IMAGE_MODEL });
     } catch (err) {
       console.error("OpenAI image failed, falling back to SVG:", err);
     }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { CompanyBrief } from "../lib/types";
+import SiteScrollPreview from "./SiteScrollPreview";
 
 const Billboard3D = dynamic(() => import("./Billboard3D"), {
   ssr: false,
@@ -54,20 +55,28 @@ export default function CreateFlow() {
       const briefJson = await briefRes.json();
       if (!briefRes.ok) throw new Error(briefJson.error || "Could not read that site");
       const nextBrief = briefJson.brief as CompanyBrief;
+
+      // ② Brief → billboard creative. A precomputed (cached) brief already
+      // carries its high-quality creative, so we skip the slow generation step.
+      let creative: { imageUrl: string; source: string };
+      if (nextBrief.media?.imageUrl) {
+        creative = { imageUrl: nextBrief.media.imageUrl, source: nextBrief.media.source };
+      } else {
+        setBrief(nextBrief);
+        setStatus("generating");
+        const creativeRes = await fetch("/api/generate-creative", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brief: nextBrief }),
+        });
+        const creativeJson = await creativeRes.json();
+        if (!creativeRes.ok) throw new Error(creativeJson.error || "Could not generate creative");
+        creative = { imageUrl: creativeJson.imageUrl, source: creativeJson.source };
+      }
+
       setBrief(nextBrief);
-
-      // ② Brief → billboard creative
-      setStatus("generating");
-      const creativeRes = await fetch("/api/generate-creative", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: nextBrief }),
-      });
-      const creativeJson = await creativeRes.json();
-      if (!creativeRes.ok) throw new Error(creativeJson.error || "Could not generate creative");
-
-      setImageUrl(creativeJson.imageUrl);
-      setSource(creativeJson.source);
+      setImageUrl(creative.imageUrl);
+      setSource(creative.source);
       setStatus("done");
 
       // Stash it so the map can composite this exact creative onto a real sign.
@@ -75,9 +84,9 @@ export default function CreateFlow() {
         localStorage.setItem(
           "vs:creative",
           JSON.stringify({
-            imageUrl: creativeJson.imageUrl,
+            imageUrl: creative.imageUrl,
             company: nextBrief.identity.companyName,
-            source: creativeJson.source,
+            source: creative.source,
           })
         );
       } catch {
@@ -197,7 +206,9 @@ export default function CreateFlow() {
         </div>
 
         <div className="lg:col-span-2">
-          {brief ? (
+          {status === "reading" ? (
+            <SiteScrollPreview url={url} />
+          ) : brief ? (
             <BriefCard brief={brief} done={status === "done"} />
           ) : (
             <div className="flex h-full flex-col justify-center rounded-2xl border border-dashed border-neutral-200 bg-white/60 p-6 text-left">
@@ -215,7 +226,7 @@ export default function CreateFlow() {
                 </li>
               </ol>
               <p className="mt-4 text-xs text-neutral-400">
-                From here VitaminSee places it, simulates recall, and predicts ROAS.
+                From here Peel places it, simulates recall, and predicts ROAS.
               </p>
             </div>
           )}
