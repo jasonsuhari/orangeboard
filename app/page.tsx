@@ -1,12 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { Opportunity as ApiOpportunity } from "./api/opportunities/route";
+import type { OutboundBrand, OutboundResponse } from "./api/outbound/route";
+import OutboundWorkflow, { type OutboundSeedRow } from "./components/OutboundWorkflow";
 import type { CompanyBrief } from "./lib/types";
+import { buildCampaignPedestrianContext, PEDESTRIAN_CONTEXT_STORAGE_KEY } from "./lib/pedestrianIcp";
 
 type Stage = "accounts" | "boards" | "creative" | "outbound";
-type OnboardingStep = "profile" | "map" | "done";
-type EditTarget = "brief" | "icp" | null;
+type FlowStep = "blob" | "billboard" | "creative" | "preview";
+type CreativeGenerationStatus = "idle" | "generating" | "done" | "error";
+
+type GeneratedCreative = {
+  imageUrl: string;
+  source: string;
+  prompt?: string;
+  model?: string;
+};
+
+const CREATIVE_KEY = "vs:creative";
+const CAMPAIGN_BLOB_KEY = "orangeboard:campaign-blob";
+const CAMPAIGN_LAUNCH_KEY = "orangeboard:campaign-launch";
+
+type BoardOption = {
+  id: string;
+  location: string;
+  address: string;
+  lat: number;
+  lng: number;
+  visibility: "High" | "Medium" | "Low";
+  visibilityScore: number;
+  dwell: string;
+  dwellSeconds: number;
+  note: string;
+  x: string;
+  y: string;
+  purchaseUrl: string;
+  inventoryStatus: string;
+  seller: string;
+  format: string;
+  dimensions: string;
+  facing: string;
+  rateCard: string;
+  estimatedCpm: string;
+  availability: string;
+  lighting: string;
+  mediaType: string;
+  restrictions: string;
+  bookingContact: string;
+  details: string[];
+  fitScore?: number;
+};
+
+type RankedBoardOption = BoardOption & {
+  fit: number;
+  accounts: number;
+};
 
 type CampaignOpportunity = {
   id: string;
@@ -21,6 +72,22 @@ type CampaignOpportunity = {
   score: number;
   creativeAngle: string;
   outboundHook: string;
+  icpFit?: string;
+  matchReasons?: string[];
+  matchedBusinesses?: Array<{
+    name: string;
+    type: string;
+    reason: string;
+    website?: string | null;
+    lng?: number;
+    lat?: number;
+  }>;
+  billboards?: BoardOption[];
+  centroid?: {
+    lng: number;
+    lat: number;
+  };
+  radiusM?: number;
   blob: {
     left: string;
     top: string;
@@ -38,6 +105,19 @@ const stages: Array<{ id: Stage; label: string }> = [
   { id: "outbound", label: "Outbound" },
 ];
 
+const BASE_BUYING_FIELDS: Pick<
+  BoardOption,
+  "rateCard" | "estimatedCpm" | "availability" | "lighting" | "mediaType" | "restrictions" | "bookingContact"
+> = {
+  rateCard: "Est. $7.5k-$18k / 4 weeks",
+  estimatedCpm: "Est. $8-$18 CPM",
+  availability: "Inquire - permitted inventory; open flight dates seller-confirmed",
+  lighting: "Static face; lighting seller-confirmed",
+  mediaType: "Static",
+  restrictions: "SF GASP permit terms, owner approval, creative specs, and regulated-category restrictions must be verified before booking",
+  bookingContact: "Seller inquiry required via SF GASP permit record",
+};
+
 const opportunities: CampaignOpportunity[] = [
   {
     id: "soma-finance",
@@ -52,6 +132,13 @@ const opportunities: CampaignOpportunity[] = [
     score: 96,
     creativeAngle: "Finance teams should close month before the ride home.",
     outboundHook: "We are running a local finance-ops campaign around your SoMa team.",
+    matchReasons: ["primary Tech & SaaS match", "finance-ops buyer signal", "commute density"],
+    matchedBusinesses: [
+      { name: "Northstar Ledger", type: "Series B SaaS", reason: "finance ops hiring signal" },
+      { name: "Atlas Workflow", type: "B2B software", reason: "controller and ops adjacency" },
+      { name: "Mergebase", type: "API platform", reason: "scaling technical team" },
+      { name: "Pillar Systems", type: "Enterprise SaaS", reason: "operations expansion" },
+    ],
     blob: {
       left: "51%",
       top: "48%",
@@ -74,6 +161,12 @@ const opportunities: CampaignOpportunity[] = [
     score: 92,
     creativeAngle: "Built for finance leaders scaling on Salesforce.",
     outboundHook: "We are activating around Dreamforce for finance leaders in your segment.",
+    matchReasons: ["event-week finance audience", "RevOps buyer signal", "SaaS concentration"],
+    matchedBusinesses: [
+      { name: "Moscone SaaS Attendees", type: "Event audience", reason: "Salesforce ecosystem density" },
+      { name: "CFO Roundtable", type: "Finance leaders", reason: "finance executive event signal" },
+      { name: "Cloud GTM Teams", type: "SaaS operators", reason: "RevOps and revenue teams nearby" },
+    ],
     blob: {
       left: "36%",
       top: "34%",
@@ -96,6 +189,12 @@ const opportunities: CampaignOpportunity[] = [
     score: 88,
     creativeAngle: "Outgrow the spend stack your competitor still uses.",
     outboundHook: "We noticed your team is in the FiDi corridor we are activating this week.",
+    matchReasons: ["competitor corridor", "B2B office/context signal", "weekday lunch traffic"],
+    matchedBusinesses: [
+      { name: "Pillar Systems", type: "Enterprise SaaS", reason: "target account office signal" },
+      { name: "Apex Spend", type: "Finance software", reason: "competitive category adjacency" },
+      { name: "Meridian Ops", type: "Professional services", reason: "B2B operator density" },
+    ],
     blob: {
       left: "63%",
       top: "31%",
@@ -118,6 +217,12 @@ const opportunities: CampaignOpportunity[] = [
     score: 81,
     creativeAngle: "Build the finance stack before the team doubles.",
     outboundHook: "Your hiring motion suggests this local expansion campaign may be relevant.",
+    matchReasons: ["people/talent buyer signal", "startup hiring context", "evening foot traffic"],
+    matchedBusinesses: [
+      { name: "Forge Talent", type: "Recruiting", reason: "people-ops adjacency" },
+      { name: "Atlas Workflow", type: "B2B software", reason: "headcount growth signal" },
+      { name: "Mission Startup Offices", type: "Startup cluster", reason: "engineering and ops audience" },
+    ],
     blob: {
       left: "67%",
       top: "66%",
@@ -129,33 +234,84 @@ const opportunities: CampaignOpportunity[] = [
   },
 ];
 
-const baseBoards = [
+const baseBoards: BoardOption[] = [
   {
-    id: "OB-104",
-    location: "4th St near Caltrain",
+    id: "ORIG787",
+    location: "539 Bryant St",
+    address: "539 Bryant St, San Francisco, CA",
+    lat: 37.780133756000055,
+    lng: -122.39674369,
     visibility: "High",
-    dwell: "22s",
-    note: "Commute-heavy approach into SoMa offices",
+    visibilityScore: 86,
+    dwell: "18s",
+    dwellSeconds: 18,
+    note: "Permitted SF GASP sign near the 4th and Brannan tech corridor.",
     x: "54%",
     y: "47%",
+    purchaseUrl: accelaUrl("00DS0"),
+    inventoryStatus: "SF GASP Permitted",
+    seller: "SF Planning inventory record; media owner to confirm",
+    format: "General Advertising Signs (GAS)",
+    dimensions: "Seller-provided",
+    facing: "Field verification required",
+    ...BASE_BUYING_FIELDS,
+    details: [
+      "SF GASP record ORIG787.",
+      "City photo reference: ORIG787_03.JPG.",
+      "Buying fields are estimated from permit metadata and must be confirmed before purchase.",
+    ],
   },
   {
-    id: "OB-218",
-    location: "Market St corridor",
+    id: "ORIG764",
+    location: "425 04th St",
+    address: "425 04th St, San Francisco, CA",
+    lat: 37.78093914400006,
+    lng: -122.39883562899996,
     visibility: "Medium",
+    visibilityScore: 80,
     dwell: "14s",
-    note: "Dense office mix with street-level foot traffic",
-    x: "37%",
-    y: "34%",
+    dwellSeconds: 14,
+    note: "Permitted 4th Street sign inside the SoMa office and commute cluster.",
+    x: "53%",
+    y: "46%",
+    purchaseUrl: accelaUrl("00DRM"),
+    inventoryStatus: "SF GASP Permitted",
+    seller: "SF Planning inventory record; media owner to confirm",
+    format: "General Advertising Signs (GAS)",
+    dimensions: "Seller-provided",
+    facing: "Field verification required",
+    ...BASE_BUYING_FIELDS,
+    details: [
+      "SF GASP record ORIG764.",
+      "Inventory note: GA Sign located at 425 04th St.",
+      "Buying fields are estimated from permit metadata and must be confirmed before purchase.",
+    ],
   },
   {
-    id: "OB-337",
-    location: "Mission St approach",
+    id: "ORIG790",
+    location: "560 Brannan St",
+    address: "560 Brannan St, San Francisco, CA",
+    lat: 37.77747872900005,
+    lng: -122.39818992399995,
     visibility: "Medium",
+    visibilityScore: 76,
     dwell: "11s",
-    note: "Good evening exposure, weaker account density",
-    x: "67%",
-    y: "63%",
+    dwellSeconds: 11,
+    note: "Permitted Brannan Street sign with strong local B2B proximity.",
+    x: "53%",
+    y: "49%",
+    purchaseUrl: accelaUrl("00DS3"),
+    inventoryStatus: "SF GASP Permitted",
+    seller: "SF Planning inventory record; media owner to confirm",
+    format: "General Advertising Signs (GAS)",
+    dimensions: "Seller-provided",
+    facing: "Field verification required",
+    ...BASE_BUYING_FIELDS,
+    details: [
+      "SF GASP record ORIG790.",
+      "Closest fallback board for Brannan Street activation planning.",
+      "Buying fields are estimated from permit metadata and must be confirmed before purchase.",
+    ],
   },
 ];
 
@@ -190,37 +346,374 @@ const accounts = [
   },
 ];
 
+type BlobBusiness = NonNullable<CampaignOpportunity["matchedBusinesses"]>[number];
+
+function blobBusinesses(opportunity: CampaignOpportunity, limit: number | null = 4): BlobBusiness[] {
+  const businesses = opportunity.matchedBusinesses?.length
+    ? opportunity.matchedBusinesses
+    : accounts.map((account) => ({
+        name: account.name,
+        type: account.segment,
+        reason: account.signal,
+      }));
+
+  return limit == null ? businesses : businesses.slice(0, limit);
+}
+
+function blobSignals(opportunity: CampaignOpportunity, limit = 3): string[] {
+  const signals = opportunity.matchReasons?.length
+    ? opportunity.matchReasons
+    : [opportunity.kind, opportunity.timing, opportunity.icpFit].filter((value): value is string => Boolean(value));
+  return signals.slice(0, limit);
+}
+
 const defaultBriefText =
   "Ramp-style finance operations platform with a direct, high-trust voice. Use crisp copy, strong contrast, and proof-driven language. The outdoor creative should feel native to the local commute context, not like a generic brand ad.";
 
 const defaultIcpText =
   "Series B-C SaaS finance teams in San Francisco. Prioritize CFOs, controllers, RevOps, and finance operations leaders at 50-500 person companies with hiring, headcount growth, or spend-management complexity.";
 
+const SF_BOUNDS = {
+  west: -122.515,
+  east: -122.355,
+  south: 37.708,
+  north: 37.815,
+};
+
+const blobRadii = [
+  "54% 46% 58% 42% / 48% 55% 45% 52%",
+  "45% 55% 43% 57% / 58% 43% 57% 42%",
+  "60% 40% 50% 50% / 42% 50% 50% 58%",
+  "48% 52% 59% 41% / 51% 45% 55% 49%",
+  "56% 44% 47% 53% / 46% 59% 41% 54%",
+  "43% 57% 55% 45% / 54% 47% 53% 46%",
+  "52% 48% 42% 58% / 50% 44% 56% 50%",
+  "47% 53% 61% 39% / 44% 56% 49% 51%",
+];
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function accelaUrl(capID3: string): string {
+  return `https://aca-prod.accela.com/ccsf/Cap/CapDetail.aspx?Module=Planning&TabName=Planning&capID1=15CAP&capID2=00000&capID3=${capID3}&agencyCode=CCSF`;
+}
+
+function mapPoint(lng: number, lat: number): { x: string; y: string } {
+  const x = ((lng - SF_BOUNDS.west) / (SF_BOUNDS.east - SF_BOUNDS.west)) * 100;
+  const y = (1 - (lat - SF_BOUNDS.south) / (SF_BOUNDS.north - SF_BOUNDS.south)) * 100;
+  return {
+    x: `${clamp(x, 8, 92).toFixed(1)}%`,
+    y: `${clamp(y, 10, 88).toFixed(1)}%`,
+  };
+}
+
+function percentNumber(value: string, fallback: number): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function hashUnit(value: string): number {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(i);
+    hash >>>= 0;
+  }
+  return hash / 0xffffffff;
+}
+
+function accountPinPoint(
+  opportunity: CampaignOpportunity,
+  account: BlobBusiness,
+  index: number,
+  total: number,
+): { x: string; y: string } {
+  const key = `${account.name}-${account.type}-${index}`;
+  const angle = hashUnit(key) * Math.PI * 2;
+  const ring = 1 + (index % 4) * 0.45;
+
+  if (typeof account.lng === "number" && typeof account.lat === "number") {
+    const point = mapPoint(account.lng, account.lat);
+    const x = percentNumber(point.x, 50);
+    const y = percentNumber(point.y, 50);
+    return {
+      x: `${clamp(x + Math.cos(angle) * ring, 8, 92).toFixed(1)}%`,
+      y: `${clamp(y + Math.sin(angle) * ring, 10, 88).toFixed(1)}%`,
+    };
+  }
+
+  const centerX = percentNumber(opportunity.blob.left, 50);
+  const centerY = percentNumber(opportunity.blob.top, 50);
+  const spreadX = clamp(opportunity.blob.width / 28, 3, 7);
+  const spreadY = clamp(opportunity.blob.height / 28, 2.5, 5.5);
+  const radiusScale = total > 1 ? 0.45 + (index % 5) * 0.14 : 0;
+
+  return {
+    x: `${clamp(centerX + Math.cos(angle) * spreadX * radiusScale, 8, 92).toFixed(1)}%`,
+    y: `${clamp(centerY + Math.sin(angle) * spreadY * radiusScale, 10, 88).toFixed(1)}%`,
+  };
+}
+
+function downloadFilename(response: Response, fallback: string): string {
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  if (match?.[1]) return match[1];
+  const slug = fallback
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+  return `${slug || "campaign-package"}.pdf`;
+}
+
+function toBoardOption(
+  board: NonNullable<ApiOpportunity["billboards"]>[number],
+): BoardOption {
+  const point = mapPoint(board.lng, board.lat);
+  return {
+    id: board.id,
+    location: board.location,
+    address: board.address,
+    lat: board.lat,
+    lng: board.lng,
+    visibility: board.visibility,
+    visibilityScore: board.visibilityScore,
+    dwell: `${board.dwellSeconds}s`,
+    dwellSeconds: board.dwellSeconds,
+    note: board.details[0] ?? `${board.location} matched this opportunity cluster.`,
+    x: point.x,
+    y: point.y,
+    purchaseUrl: board.purchaseUrl,
+    inventoryStatus: board.inventoryStatus,
+    seller: board.seller,
+    format: board.format,
+    dimensions: board.dimensions,
+    facing: board.facing,
+    rateCard: board.rateCard,
+    estimatedCpm: board.estimatedCpm,
+    availability: board.availability,
+    lighting: board.lighting,
+    mediaType: board.mediaType,
+    restrictions: board.restrictions,
+    bookingContact: board.bookingContact,
+    details: board.details,
+    fitScore: board.fitScore,
+  };
+}
+
+function campaignPolygonFor(opportunity: CampaignOpportunity, board: BoardOption): [number, number][] {
+  const center = opportunity.centroid ?? { lng: board.lng, lat: board.lat };
+  const radiusM = opportunity.radiusM ?? 360;
+  const latMeters = 111320;
+  const lngMeters = 111320 * Math.cos((center.lat * Math.PI) / 180);
+  const points: [number, number][] = [];
+  const segments = 28;
+
+  for (let i = 0; i < segments; i += 1) {
+    const angle = (i / segments) * Math.PI * 2;
+    const eastM = Math.cos(angle) * radiusM * 1.15;
+    const northM = Math.sin(angle) * radiusM * 0.82;
+    points.push([
+      center.lng + eastM / lngMeters,
+      center.lat + northM / latMeters,
+    ]);
+  }
+
+  points.push(points[0]);
+  return points;
+}
+
+function buildBrief(companyName: string, creativeBrief: string, icp: string): CompanyBrief {
+  return {
+    url: "orangeboard://homepage",
+    identity: {
+      companyName,
+      industry: "B2B software",
+      description: creativeBrief,
+      brandAdjectives: ["direct", "credible", "modern"],
+      tagline: "Built for teams ready to scale",
+    },
+    visualSystem: {
+      primaryColor: "#f97316",
+      styleReference: "Clean enterprise campaign with strong contrast and minimal copy.",
+    },
+    campaign: {
+      coreMessage: "Help scaling teams control spend before operational drag compounds.",
+      offerOrHook: "Local campaign for high-intent accounts clustered nearby.",
+      callToAction: "Book a demo",
+      campaignObjective: "awareness",
+    },
+    audience: {
+      description: icp,
+      tone: "sharp and practical",
+      contextWhenSeen: "mixed",
+    },
+  };
+}
+
+function toBlobOpportunity(api: ApiOpportunity, index: number): CampaignOpportunity {
+  const x = ((api.centroid.lng - SF_BOUNDS.west) / (SF_BOUNDS.east - SF_BOUNDS.west)) * 100;
+  const y = (1 - (api.centroid.lat - SF_BOUNDS.south) / (SF_BOUNDS.north - SF_BOUNDS.south)) * 100;
+  const width = clamp(104 + (api.score - 60) * 1.2 + api.placements * 3, 100, 178);
+  return {
+    id: api.id,
+    title: api.title,
+    kind: api.kind,
+    area: api.area,
+    timing: api.timing,
+    summary: api.summary,
+    accounts: api.accounts,
+    events: api.events,
+    placements: api.placements,
+    score: api.score,
+    creativeAngle: api.creativeAngle,
+    outboundHook: api.icpFit,
+    icpFit: api.icpFit,
+    matchReasons: api.matchReasons,
+    matchedBusinesses: api.matchedBusinesses,
+    billboards: api.billboards?.map(toBoardOption),
+    centroid: api.centroid,
+    radiusM: api.radiusM,
+    blob: {
+      left: `${clamp(x, 10, 90).toFixed(1)}%`,
+      top: `${clamp(y, 12, 86).toFixed(1)}%`,
+      width,
+      height: Math.round(width * 0.68),
+      rotate: `${((index * 17) % 31) - 15}deg`,
+      radius: blobRadii[index % blobRadii.length],
+    },
+  };
+}
+
 export default function Home() {
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>("boards");
-  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("profile");
-  const [editTarget, setEditTarget] = useState<EditTarget>(null);
-  const [website, setWebsite] = useState("");
-  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState("Ramp");
-  const [creativeBrief, setCreativeBrief] = useState(defaultBriefText);
+  const [flowStep, setFlowStep] = useState<FlowStep>("blob");
+  const [companyName] = useState("Ramp");
+  const [creativeBrief] = useState(defaultBriefText);
   const [icp, setIcp] = useState(defaultIcpText);
+  const [icpEditMode, setIcpEditMode] = useState(false);
+  const [opportunityList, setOpportunityList] = useState<CampaignOpportunity[]>(opportunities);
   const [selectedOpportunity, setSelectedOpportunity] = useState(opportunities[0]);
   const [selectedBoardId, setSelectedBoardId] = useState(baseBoards[0].id);
+  const [boardTouched, setBoardTouched] = useState(false);
+  const [creativeDialogOpen, setCreativeDialogOpen] = useState(false);
+  const [creativeStatus, setCreativeStatus] = useState<CreativeGenerationStatus>("idle");
+  const [creativeResult, setCreativeResult] = useState<GeneratedCreative | null>(null);
+  const [creativeError, setCreativeError] = useState<string | null>(null);
+  const [opportunitiesLoading, setOpportunitiesLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [outboundBrands, setOutboundBrands] = useState<OutboundBrand[] | null>(null);
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [outboundError, setOutboundError] = useState<string | null>(null);
+  const [outboundUnconfigured, setOutboundUnconfigured] = useState(false);
+
+  const campaignBrief = useMemo(
+    () => buildBrief(companyName, creativeBrief, icp),
+    [companyName, creativeBrief, icp],
+  );
+
+  useEffect(() => {
+    if (icpEditMode) {
+      setOpportunitiesLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setOpportunitiesLoading(true);
+
+    fetch("/api/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify(campaignBrief),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { opportunities?: ApiOpportunity[] } | null) => {
+        if (!data?.opportunities?.length) return;
+        const hydrated = data.opportunities.map(toBlobOpportunity);
+        setOpportunityList(hydrated);
+        setSelectedOpportunity(hydrated[0]);
+        setSelectedBoardId(hydrated[0].billboards?.[0]?.id ?? baseBoards[0].id);
+        setBoardTouched(false);
+      })
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") {
+          setOpportunityList(opportunities);
+          setSelectedOpportunity(opportunities[0]);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setOpportunitiesLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [campaignBrief, icpEditMode]);
 
   const stageIndex = useMemo(
     () => stages.findIndex((item) => item.id === stage),
     [stage]
   );
 
-  const boards = useMemo(
-    () =>
-      baseBoards.map((board, index) => ({
+  const selectedOpportunityIndex = useMemo(() => {
+    const index = opportunityList.findIndex((opportunity) => opportunity.id === selectedOpportunity.id);
+    return index >= 0 ? index : 0;
+  }, [opportunityList, selectedOpportunity.id]);
+
+  function selectOpportunity(opportunity: CampaignOpportunity) {
+    setSelectedOpportunity(opportunity);
+    setSelectedBoardId(opportunity.billboards?.[0]?.id ?? baseBoards[0].id);
+    setBoardTouched(false);
+    setCreativeResult(null);
+    setCreativeError(null);
+    setFlowStep("billboard");
+    setStage("boards");
+  }
+
+  function selectBoard(boardId: string) {
+    setSelectedBoardId(boardId);
+    setBoardTouched(true);
+    setCreativeResult(null);
+    setCreativeError(null);
+    if (flowStep === "blob") setFlowStep("billboard");
+    setStage("boards");
+  }
+
+  function stepOpportunity(direction: -1 | 1) {
+    if (!opportunityList.length) return;
+
+    const nextIndex = (selectedOpportunityIndex + direction + opportunityList.length) % opportunityList.length;
+    selectOpportunity(opportunityList[nextIndex]);
+  }
+
+  function persistCampaignContext(opportunity: CampaignOpportunity) {
+    try {
+      localStorage.setItem(
+        PEDESTRIAN_CONTEXT_STORAGE_KEY,
+        JSON.stringify(buildCampaignPedestrianContext({ companyName, icp, opportunity })),
+      );
+    } catch {
+      /* storage may be unavailable; the map falls back to ambient pedestrians */
+    }
+  }
+
+  useEffect(() => {
+    persistCampaignContext(selectedOpportunity);
+  }, [companyName, icp, selectedOpportunity]);
+
+  const boards = useMemo<RankedBoardOption[]>(
+    () => {
+      const source = selectedOpportunity.billboards?.length
+        ? selectedOpportunity.billboards
+        : baseBoards;
+      return source.map((board, index) => ({
         ...board,
-        fit: Math.max(72, selectedOpportunity.score - index * 8),
-        accounts: Math.max(6, selectedOpportunity.accounts - index * 7),
-      })),
+        fit: "fitScore" in board && typeof board.fitScore === "number"
+          ? board.fitScore
+          : Math.max(72, selectedOpportunity.score - index * 8),
+        accounts: Math.max(3, selectedOpportunity.accounts - index * 3),
+      }));
+    },
     [selectedOpportunity]
   );
 
@@ -235,87 +728,355 @@ export default function Home() {
     [selectedOpportunity]
   );
 
-  const outboundRows = useMemo(
-    () =>
-      accounts.slice(0, 3).map((account, index) => ({
-        account: account.name,
-        contact: index === 0 ? "VP Finance" : index === 1 ? "Controller" : "Head of Ops",
-        hook:
-          index === 0
-            ? selectedOpportunity.outboundHook
-            : `Your team is near our ${selectedOpportunity.area} activation.`,
-        status: index === 0 ? "Drafted" : index === 1 ? "Ready" : "Needs contact",
-      })),
-    [selectedOpportunity]
+  const launchBrief = useMemo<CompanyBrief>(
+    () => ({
+      ...campaignBrief,
+      identity: {
+        ...campaignBrief.identity,
+        description: `${creativeBrief} Place the message for ${selectedOpportunity.area} near ${selectedBoard.location}.`,
+      },
+      visualSystem: {
+        ...campaignBrief.visualSystem,
+        styleReference: `${campaignBrief.visualSystem.styleReference ?? ""} Billboard creative for ${selectedBoard.location}; readable from street view with minimal copy.`.trim(),
+      },
+      campaign: {
+        ...campaignBrief.campaign,
+        coreMessage: selectedOpportunity.creativeAngle,
+        offerOrHook: selectedOpportunity.outboundHook,
+        callToAction: campaignBrief.campaign.callToAction ?? "Book a demo",
+      },
+      audience: {
+        ...campaignBrief.audience,
+        description: `${icp} Local context: ${selectedOpportunity.timing} around ${selectedOpportunity.area}.`,
+        contextWhenSeen: "mixed",
+      },
+    }),
+    [campaignBrief, creativeBrief, icp, selectedOpportunity, selectedBoard],
   );
 
-  async function analyzeWebsite(event: React.FormEvent) {
-    event.preventDefault();
-    if (!website.trim() || analysisStatus === "loading") return;
+  const stagedOutboundRows = useMemo<OutboundSeedRow[]>(
+    () =>
+      blobBusinesses(selectedOpportunity, 3).map((account, index) => {
+        const contactTitle = index === 0 ? "VP Finance" : index === 1 ? "Controller" : "Head of Ops";
+        const hook =
+          index === 0
+            ? selectedOpportunity.outboundHook
+            : `Your team is near our ${selectedOpportunity.area} activation.`;
+        return {
+          id: `${selectedOpportunity.id}:${account.name}`,
+          account: account.name,
+          domain: account.website ?? null,
+          industry: account.type,
+          contactTitle,
+          hook,
+          subject: `${companyName} near ${selectedOpportunity.area}`,
+          pitch: [
+            "Hi {{first_name}},",
+            "",
+            hook,
+            "",
+            `We selected ${selectedBoard.location} because the board sits in a cluster of ${selectedBoard.accounts} nearby ICP signals.`,
+            "",
+            "Worth seeing the mockup and visibility read?",
+          ].join("\n"),
+          source: "staged",
+        };
+      }),
+    [companyName, selectedBoard.accounts, selectedBoard.location, selectedOpportunity],
+  );
 
-    setAnalysisStatus("loading");
-    setAnalysisError(null);
+  const outboundSeedRows = useMemo<OutboundSeedRow[]>(
+    () =>
+      outboundBrands?.length
+        ? outboundBrands.map((brand) => ({
+            id: `${selectedOpportunity.id}:${brand.domain ?? brand.name}`,
+            account: brand.name,
+            domain: brand.domain,
+            industry: brand.industry,
+            employeeCount: brand.employeeCount,
+            fundingSummary: brand.fundingSummary,
+            contactName: brand.contact?.name,
+            contactTitle: brand.contact?.title,
+            email: brand.bestEmail,
+            hook: brand.hook,
+            subject: brand.pitch?.subjectLine,
+            pitch: brand.pitch?.fullEmail,
+            source: "live",
+          }))
+        : stagedOutboundRows,
+    [outboundBrands, selectedOpportunity.id, stagedOutboundRows],
+  );
+
+  const outboundCampaignKey = useMemo(
+    () => [companyName, selectedOpportunity.id, selectedBoard.id, icp.slice(0, 96)].join("|"),
+    [companyName, icp, selectedBoard.id, selectedOpportunity.id],
+  );
+
+  const accountPins = useMemo(
+    () => blobBusinesses(selectedOpportunity, null),
+    [selectedOpportunity],
+  );
+  const boardsUnlocked = flowStep !== "blob";
+  const canConfirmBoard = boardsUnlocked && boardTouched && !opportunitiesLoading && creativeStatus !== "generating";
+  const generatedCreativeUrl = creativeResult?.imageUrl;
+
+  // Fetched outbound is specific to one blob + board + ICP; clear it when any
+  // of those change so the queue never shows stale matches.
+  useEffect(() => {
+    setOutboundBrands(null);
+    setOutboundError(null);
+    setOutboundUnconfigured(false);
+  }, [selectedOpportunity.id, selectedBoardId, icp]);
+
+  async function generateOutbound() {
+    if (outboundLoading) return;
+    setOutboundLoading(true);
+    setOutboundError(null);
+    setOutboundUnconfigured(false);
 
     try {
-      const response = await fetch("/api/company-brief", {
+      const response = await fetch("/api/outbound", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: website }),
+        body: JSON.stringify({
+          companyName,
+          icp,
+          opportunity: {
+            title: selectedOpportunity.title,
+            area: selectedOpportunity.area,
+            kind: selectedOpportunity.kind,
+            accounts: selectedOpportunity.accounts,
+          },
+          board: {
+            location: selectedBoard.location,
+            address: selectedBoard.address,
+            lat: selectedBoard.lat,
+            lng: selectedBoard.lng,
+            visibilityScore: selectedBoard.visibilityScore,
+            dwellSeconds: selectedBoard.dwellSeconds,
+          },
+        }),
       });
-      const payload = (await response.json()) as { brief?: CompanyBrief; error?: string };
 
-      if (!response.ok || !payload.brief) {
-        throw new Error(payload.error || "Could not analyze that website");
+      const data = (await response.json()) as OutboundResponse;
+      if (!data.configured) {
+        setOutboundUnconfigured(true);
+        return;
       }
-
-      applyBrief(payload.brief);
-      setAnalysisStatus("done");
-    } catch (error) {
-      const fallback = buildFallbackBrief(website);
-      applyBrief(fallback);
-      setAnalysisStatus("error");
-      setAnalysisError(
-        error instanceof Error
-          ? `${error.message}. Using a demo-safe inferred profile instead.`
-          : "Using a demo-safe inferred profile instead."
-      );
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? `Outbound failed (${response.status})`);
+      }
+      setOutboundBrands(data.matched);
+    } catch (err) {
+      setOutboundError(err instanceof Error ? err.message : "Outbound failed");
+    } finally {
+      setOutboundLoading(false);
     }
   }
 
-  function applyBrief(brief: CompanyBrief) {
-    setCompanyName(brief.identity.companyName);
-    setCreativeBrief(
-      [
-        `${brief.identity.companyName} is a ${brief.identity.industry || "B2B company"}.`,
-        brief.identity.description,
-        `Core message: ${brief.campaign.coreMessage}`,
-        brief.campaign.offerOrHook ? `Hook: ${brief.campaign.offerOrHook}` : "",
-        brief.campaign.callToAction ? `CTA: ${brief.campaign.callToAction}` : "",
-        brief.visualSystem.primaryColor
-          ? `Visual cue: use ${brief.visualSystem.primaryColor} as the dominant accent.`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
-    setIcp(
-      [
-        brief.audience.description,
-        "Prioritize accounts clustered around offices, events, commute paths, and competitor corridors.",
-        "Use physical exposure as passive outbound before sales follow-up.",
-      ].join("\n")
-    );
+  function persistCampaignLaunch(creative: GeneratedCreative) {
+    persistCampaignContext(selectedOpportunity);
+
+    try {
+      localStorage.setItem(
+        CREATIVE_KEY,
+        JSON.stringify({
+          imageUrl: creative.imageUrl,
+          company: companyName,
+          source: creative.source,
+        }),
+      );
+      localStorage.setItem(
+        CAMPAIGN_BLOB_KEY,
+        JSON.stringify(campaignPolygonFor(selectedOpportunity, selectedBoard)),
+      );
+      localStorage.setItem(
+        CAMPAIGN_LAUNCH_KEY,
+        JSON.stringify({
+          mode: "preview",
+          creativeUrl: creative.imageUrl,
+          opportunity: {
+            id: selectedOpportunity.id,
+            title: selectedOpportunity.title,
+            area: selectedOpportunity.area,
+          },
+          board: {
+            id: selectedBoard.id,
+            name: selectedBoard.location,
+            address: selectedBoard.address,
+            status: selectedBoard.inventoryStatus,
+            lng: selectedBoard.lng,
+            lat: selectedBoard.lat,
+            seller: selectedBoard.seller,
+            format: selectedBoard.format,
+            dimensions: selectedBoard.dimensions,
+            facing: selectedBoard.facing,
+            rateCard: selectedBoard.rateCard,
+            estimatedCpm: selectedBoard.estimatedCpm,
+            availability: selectedBoard.availability,
+            lighting: selectedBoard.lighting,
+            mediaType: selectedBoard.mediaType,
+            restrictions: selectedBoard.restrictions,
+            bookingContact: selectedBoard.bookingContact,
+            purchaseUrl: selectedBoard.purchaseUrl,
+          },
+        }),
+      );
+    } catch {
+      /* storage may be unavailable; the map falls back to its default state */
+    }
   }
 
-  function continueToMap() {
-    setOnboardingStep("map");
-    setEditTarget(null);
+  function openStreetPreview(creative: GeneratedCreative | null = creativeResult) {
+    if (!creative) return;
+    persistCampaignLaunch(creative);
+    setFlowStep("preview");
+    router.push("/map?mode=preview");
   }
 
-  function launchWorkspace() {
-    setOnboardingStep("done");
-    setSelectedBoardId(baseBoards[0].id);
-    setStage("boards");
+  async function confirmBillboardSelection() {
+    if (!boardTouched || creativeStatus === "generating") return;
+
+    setFlowStep("creative");
+    setStage("creative");
+    setCreativeDialogOpen(true);
+    setCreativeStatus("generating");
+    setCreativeError(null);
+    setCreativeResult(null);
+
+    try {
+      const response = await fetch("/api/generate-creative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: launchBrief }),
+      });
+      const data = (await response.json()) as {
+        imageUrl?: string;
+        source?: string;
+        prompt?: string;
+        model?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.imageUrl) {
+        throw new Error(data.error ?? "Could not generate creative");
+      }
+
+      const nextCreative: GeneratedCreative = {
+        imageUrl: data.imageUrl,
+        source: data.source ?? "svg",
+        prompt: data.prompt,
+        model: data.model,
+      };
+      setCreativeResult(nextCreative);
+      setCreativeStatus("done");
+      setFlowStep("preview");
+      persistCampaignLaunch(nextCreative);
+      window.setTimeout(() => openStreetPreview(nextCreative), 650);
+    } catch (err) {
+      setCreativeStatus("error");
+      setCreativeError(err instanceof Error ? err.message : "Creative generation failed");
+    }
+  }
+
+  async function exportCampaignPackage() {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    persistCampaignContext(selectedOpportunity);
+
+    const targetAccounts = blobBusinesses(selectedOpportunity, 8).map((business, index) => ({
+      company: business.name,
+      category: business.type,
+      whyMatched: `${business.reason}; relevant to ${icp}`,
+      suggestedContacts: index % 2 === 0
+        ? ["CFO", "VP Finance", "Controller"]
+        : ["Head of Growth", "RevOps", "Founder"],
+      localSignal: `${business.name} is part of the selected ${selectedOpportunity.area} hotspot context.`,
+      priority: index < 2 ? "A" : index < 5 ? "B" : "C",
+      proofLevel: "grounded",
+    }));
+
+    const details = [
+      ...(selectedBoard.details ?? []),
+      `Selected opportunity: ${selectedOpportunity.title}.`,
+      `${selectedBoard.accounts} ICP-matched account signals near this board in the current export.`,
+    ];
+
+    try {
+      const response = await fetch("/api/campaign-report?format=pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/pdf" },
+        body: JSON.stringify({
+          brief: campaignBrief,
+          opportunity: {
+            id: selectedOpportunity.id,
+            title: selectedOpportunity.title,
+            kind: selectedOpportunity.kind,
+            area: selectedOpportunity.area,
+            timing: selectedOpportunity.timing,
+            summary: selectedOpportunity.summary,
+            accounts: selectedOpportunity.accounts,
+            events: selectedOpportunity.events,
+            placements: selectedOpportunity.placements,
+            score: selectedOpportunity.score,
+            creativeAngle: selectedOpportunity.creativeAngle,
+            icpFit: selectedOpportunity.icpFit,
+            matchReasons: selectedOpportunity.matchReasons,
+            matchedBusinesses: selectedOpportunity.matchedBusinesses,
+          },
+          selectedBillboard: {
+            id: selectedBoard.id,
+            location: selectedBoard.location,
+            address: selectedBoard.address,
+            lat: selectedBoard.lat,
+            lng: selectedBoard.lng,
+            visibilityScore: selectedBoard.visibilityScore,
+            dwellSeconds: selectedBoard.dwellSeconds,
+            prominenceScore: selectedBoard.fit,
+            inventoryStatus: selectedBoard.inventoryStatus,
+            purchaseUrl: selectedBoard.purchaseUrl,
+            seller: selectedBoard.seller,
+            format: selectedBoard.format,
+            dimensions: selectedBoard.dimensions,
+            facing: selectedBoard.facing,
+            rateCard: selectedBoard.rateCard,
+            estimatedCpm: selectedBoard.estimatedCpm,
+            availability: selectedBoard.availability,
+            lighting: selectedBoard.lighting,
+            mediaType: selectedBoard.mediaType,
+            restrictions: selectedBoard.restrictions,
+            bookingContact: selectedBoard.bookingContact,
+            details,
+          },
+          targetAccounts,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Export failed";
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          message = `${message} (${response.status})`;
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = downloadFilename(response, `${companyName}-${selectedOpportunity.area}-campaign-package`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -339,6 +1100,14 @@ export default function Home() {
           <div className="flex flex-wrap gap-2 lg:justify-end">
             <Link
               href="/map"
+              onClick={() => {
+                persistCampaignContext(selectedOpportunity);
+                try {
+                  localStorage.removeItem(CAMPAIGN_LAUNCH_KEY);
+                } catch {
+                  /* ignore storage failures */
+                }
+              }}
               className="inline-flex h-10 items-center justify-center rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
             >
               Open Map
@@ -367,22 +1136,46 @@ export default function Home() {
                 <p className="mt-1 text-sm font-semibold text-orange-950">
                   {selectedOpportunity.title}
                 </p>
+                {opportunitiesLoading && (
+                  <p className="mt-1 text-[11px] font-medium text-orange-700">
+                    Re-scoring blobs against ICP...
+                  </p>
+                )}
                 <p className="mt-1 text-xs leading-relaxed text-orange-800">
                   {selectedOpportunity.summary}
                 </p>
+                <div className="mt-3 border-t border-orange-200/75 pt-3">
+                  <BlobSignals opportunity={selectedOpportunity} tone="warm" />
+                </div>
               </div>
 
-              <label className="block">
-                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                  ICP
-                </span>
-                <textarea
-                  value={icp}
-                  onChange={(event) => setIcp(event.target.value)}
-                  rows={6}
-                  className="mt-2 w-full resize-none rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              {icpEditMode ? (
+                <label className="block">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">ICP</span>
+                    <button
+                      type="button"
+                      onClick={() => setIcpEditMode(false)}
+                      className="text-[11px] font-medium text-orange-500 transition hover:text-orange-600"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <textarea
+                    value={icp}
+                    onChange={(event) => setIcp(event.target.value)}
+                    rows={6}
+                    className="w-full resize-none rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    autoFocus
+                  />
+                </label>
+              ) : (
+                <ICPProfileCard
+                  matchedAccounts={selectedOpportunity.accounts}
+                  icp={icp}
+                  onEdit={() => setIcpEditMode(true)}
                 />
-              </label>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Territory" value="San Francisco" />
@@ -448,62 +1241,141 @@ export default function Home() {
             <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_300px]">
               <div className="relative min-h-[520px] overflow-hidden bg-[#e9ece7]">
                 <MapTexture />
-                <OpportunityBlob
-                  opportunity={selectedOpportunity}
-                  selected
-                  compact
-                  onSelect={() => undefined}
-                />
-                {boards.map((board) => (
+
+                <BlobContentsPanel opportunity={selectedOpportunity} />
+
+                {opportunityList.map((opportunity) => (
+                  <OpportunityBlob
+                    key={opportunity.id}
+                    opportunity={opportunity}
+                    selected={selectedOpportunity.id === opportunity.id}
+                    compact
+                    onSelect={() => selectOpportunity(opportunity)}
+                    elevate={selectedOpportunity.id === opportunity.id}
+                  />
+                ))}
+                {boardsUnlocked && boards.map((board) => (
                   <button
                     key={board.id}
                     type="button"
-                    onClick={() => setSelectedBoardId(board.id)}
+                    onClick={() => selectBoard(board.id)}
                     className={
                       "absolute z-20 grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 text-xs font-bold shadow-sm transition " +
-                      (selectedBoard.id === board.id
+                      (boardTouched && selectedBoard.id === board.id
                         ? "border-ink bg-orange-500 text-white"
                         : "border-white bg-orange-500 text-white hover:scale-105")
                     }
                     style={{ left: board.x, top: board.y }}
                     aria-label={`Select ${board.id}`}
                   >
-                    {board.id.split("-")[1]}
+                    {board.id.includes("-") ? board.id.split("-")[1] : board.id.replace(/\D/g, "").slice(-3) || board.id.slice(-3)}
                   </button>
                 ))}
 
-                {accounts.map((account, index) => (
-                  <span
-                    key={account.name}
-                    className="absolute z-10 h-3 w-3 rounded-full border-2 border-white bg-ink shadow-sm"
-                    style={{
-                      left: `${30 + index * 9}%`,
-                      top: `${42 + (index % 2) * 13}%`,
-                    }}
-                    aria-label={account.name}
-                  />
-                ))}
-
-                <div className="absolute bottom-4 left-4 z-30 w-[min(380px,calc(100%-2rem))] rounded-md border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
-                        Best board for this blob
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold">{selectedBoard.location}</h3>
-                    </div>
-                    <span className="rounded-md bg-orange-50 px-2.5 py-1 text-sm font-bold text-orange-700">
-                      {selectedBoard.fit}
+                {accountPins.map((account, index) => {
+                  const point = accountPinPoint(selectedOpportunity, account, index, accountPins.length);
+                  return (
+                    <span
+                      key={`${account.name}-${account.type}-${index}`}
+                      className="group absolute grid h-4 w-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-ink shadow-md"
+                      style={{ left: point.x, top: point.y, zIndex: 26 }}
+                      aria-label={account.name}
+                      title={account.name}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                      <span className="pointer-events-none absolute left-1/2 top-[-1.9rem] hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-neutral-200 bg-white/95 px-2 py-1 text-[10px] font-semibold text-ink shadow-sm group-hover:block">
+                        {account.name}
+                      </span>
                     </span>
+                  );
+                })}
+
+                {opportunityList.length > 0 && (
+                  <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-neutral-200 bg-white/95 px-2 py-1 shadow-lg backdrop-blur">
+                    <button
+                      type="button"
+                      onClick={() => stepOpportunity(-1)}
+                      disabled={opportunityList.length < 2}
+                      className="grid h-7 w-7 place-items-center rounded-full text-sm font-bold text-neutral-600 transition hover:bg-neutral-100 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-600"
+                      aria-label="Previous blob"
+                    >
+                      {"<"}
+                    </button>
+                    <span className="min-w-12 text-center text-xs font-bold tabular-nums text-ink">
+                      {selectedOpportunityIndex + 1}/{opportunityList.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stepOpportunity(1)}
+                      disabled={opportunityList.length < 2}
+                      className="grid h-7 w-7 place-items-center rounded-full text-sm font-bold text-neutral-600 transition hover:bg-neutral-100 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-600"
+                      aria-label="Next blob"
+                    >
+                      {">"}
+                    </button>
                   </div>
-                  <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-                    {selectedBoard.note}
-                  </p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                    <Metric label="Accounts" value={selectedBoard.accounts.toString()} />
-                    <Metric label="Visibility" value={selectedBoard.visibility} />
-                    <Metric label="Dwell" value={selectedBoard.dwell} />
-                  </div>
+                )}
+
+                <div className="absolute bottom-16 left-4 z-30 w-[min(390px,calc(100%-2rem))] rounded-md border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur">
+                  {!boardsUnlocked ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
+                        Step 1: select a blob
+                      </p>
+                      <h3 className="mt-1 text-lg font-semibold">{selectedOpportunity.title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                        Click one of the opportunity blobs to lock the account cluster, then choose a billboard inside it.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
+                            Step 2: select a billboard
+                          </p>
+                          <h3 className="mt-1 text-lg font-semibold">{selectedBoard.location}</h3>
+                        </div>
+                        <span className="rounded-md bg-orange-50 px-2.5 py-1 text-sm font-bold text-orange-700">
+                          {selectedBoard.fit}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+                        {boardTouched
+                          ? selectedBoard.note
+                          : "Pick a billboard marker or ranked board, then confirm it to generate the creative."}
+                      </p>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                        <Metric label="Accounts" value={selectedBoard.accounts.toString()} />
+                        <Metric label="Visibility" value={selectedBoard.visibility} />
+                        <Metric label="Dwell" value={selectedBoard.dwell} />
+                      </div>
+                      {boardTouched && <BoardBuyingFacts board={selectedBoard} />}
+                      <button
+                        type="button"
+                        onClick={confirmBillboardSelection}
+                        disabled={!canConfirmBoard}
+                        className="mt-3 h-9 w-full rounded-md bg-orange-500 text-sm font-semibold text-white transition hover:bg-orange-600 active:bg-orange-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-600"
+                      >
+                        {creativeStatus === "generating"
+                          ? "Generating creative..."
+                          : boardTouched
+                            ? "Confirm board and generate"
+                            : "Select a board to continue"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportCampaignPackage}
+                        disabled={exporting || opportunitiesLoading}
+                        className="mt-2 h-8 w-full rounded-md border border-neutral-200 bg-white text-xs font-semibold text-ink transition hover:bg-neutral-50 disabled:cursor-wait disabled:bg-neutral-100 disabled:text-neutral-400"
+                      >
+                        {exporting ? "Exporting..." : "Export package"}
+                      </button>
+                      {exportError && (
+                        <p className="mt-2 text-xs font-medium text-red-600">{exportError}</p>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -512,14 +1384,18 @@ export default function Home() {
                   <h3 className="text-sm font-semibold">Ranked Boards</h3>
                 </div>
                 <div className="divide-y divide-neutral-100">
-                  {boards.map((board) => (
+                  {!boardsUnlocked ? (
+                    <div className="px-4 py-5 text-sm leading-relaxed text-neutral-500">
+                      Select an opportunity blob first to unlock billboard inventory.
+                    </div>
+                  ) : boards.map((board) => (
                     <button
                       key={board.id}
                       type="button"
-                      onClick={() => setSelectedBoardId(board.id)}
+                      onClick={() => selectBoard(board.id)}
                       className={
                         "block w-full px-4 py-3 text-left transition " +
-                        (selectedBoard.id === board.id ? "bg-orange-50" : "bg-white hover:bg-neutral-50")
+                        (boardTouched && selectedBoard.id === board.id ? "bg-orange-50" : "bg-white hover:bg-neutral-50")
                       }
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -527,6 +1403,9 @@ export default function Home() {
                           <p className="text-sm font-semibold">{board.location}</p>
                           <p className="mt-1 text-xs text-neutral-500">
                             {board.accounts} target accounts nearby
+                          </p>
+                          <p className="mt-1 text-[11px] leading-snug text-neutral-500">
+                            {board.mediaType} | {board.rateCard} | {board.estimatedCpm}
                           </p>
                         </div>
                         <span className="text-sm font-bold text-orange-600">{board.fit}</span>
@@ -551,23 +1430,34 @@ export default function Home() {
                   label="Why it fits"
                   value={`${selectedBoard.accounts} nearby accounts, ${selectedBoard.visibility.toLowerCase()} visibility, ${selectedBoard.dwell} dwell`}
                 />
+                <OutputRow label="Owner / seller" value={selectedBoard.seller} />
+                <OutputRow label="Rate / CPM" value={`${selectedBoard.rateCard} / ${selectedBoard.estimatedCpm}`} />
+                <OutputRow label="Availability" value={selectedBoard.availability} />
+                <OutputRow label="Booking contact" value={selectedBoard.bookingContact} />
               </div>
             </OutputPanel>
 
             <OutputPanel title="Local Creative" subtitle="Generated for this street and account cluster.">
-              <div className="aspect-[16/9] rounded-md border border-neutral-200 bg-ink p-4 text-white">
-                <div className="flex h-full flex-col justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
-                    {companyName} near {selectedOpportunity.area}
-                  </p>
-                  <p className="text-2xl font-semibold leading-tight">
-                    {creativeVariants[0]}
-                  </p>
-                  <p className="text-sm text-neutral-300">
-                    Built for {selectedOpportunity.kind.toLowerCase()} in {selectedOpportunity.area}.
-                  </p>
+              {generatedCreativeUrl ? (
+                <div className="aspect-[16/9] overflow-hidden rounded-md border border-neutral-200 bg-neutral-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={generatedCreativeUrl} alt="Generated billboard creative" className="h-full w-full object-cover" />
                 </div>
-              </div>
+              ) : (
+                <div className="aspect-[16/9] rounded-md border border-neutral-200 bg-ink p-4 text-white">
+                  <div className="flex h-full flex-col justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
+                      {companyName} near {selectedOpportunity.area}
+                    </p>
+                    <p className="text-2xl font-semibold leading-tight">
+                      {creativeVariants[0]}
+                    </p>
+                    <p className="text-sm text-neutral-300">
+                      Built for {selectedOpportunity.kind.toLowerCase()} in {selectedOpportunity.area}.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="mt-3 space-y-2">
                 {creativeVariants.slice(1).map((variant) => (
                   <p key={variant} className="rounded-md border border-neutral-200 px-3 py-2 text-xs text-neutral-600">
@@ -577,315 +1467,147 @@ export default function Home() {
               </div>
             </OutputPanel>
 
-            <OutputPanel title="Outbound Queue" subtitle="Orange Slice handoff for coordinated follow-up.">
-              <div className="divide-y divide-neutral-100">
-                {outboundRows.map((row) => (
-                  <div key={row.account} className="py-3 first:pt-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">{row.account}</p>
-                        <p className="mt-0.5 text-xs text-neutral-500">{row.contact}</p>
-                      </div>
-                      <span className="rounded-md bg-neutral-100 px-2 py-1 text-[11px] font-medium text-neutral-600">
-                        {row.status}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs leading-relaxed text-neutral-600">{row.hook}</p>
-                  </div>
-                ))}
-              </div>
+            <OutputPanel title="Outbound Queue" subtitle="Orange Slice + Fiber outbound for coordinated follow-up.">
+              <OutboundWorkflow
+                campaignKey={outboundCampaignKey}
+                campaignName={`${companyName} - ${selectedOpportunity.area}`}
+                companyName={companyName}
+                opportunityTitle={selectedOpportunity.title}
+                opportunityArea={selectedOpportunity.area}
+                boardLocation={selectedBoard.location}
+                boardAddress={selectedBoard.address}
+                seedRows={outboundSeedRows}
+                loading={outboundLoading}
+                error={outboundError}
+                unconfigured={outboundUnconfigured}
+                onGenerate={generateOutbound}
+              />
             </OutputPanel>
           </aside>
         </div>
       </section>
 
-      {onboardingStep !== "done" && (
-        <OnboardingDialog
-          step={onboardingStep}
-          website={website}
-          companyName={companyName}
-          creativeBrief={creativeBrief}
-          icp={icp}
-          editTarget={editTarget}
-          analysisStatus={analysisStatus}
-          analysisError={analysisError}
-          selectedOpportunity={selectedOpportunity}
-          onWebsiteChange={setWebsite}
-          onAnalyze={analyzeWebsite}
-          onCreativeBriefChange={setCreativeBrief}
-          onIcpChange={setIcp}
-          onEditTargetChange={setEditTarget}
-          onNext={continueToMap}
-          onBack={() => setOnboardingStep("profile")}
-          onOpportunitySelect={setSelectedOpportunity}
-          onLaunch={launchWorkspace}
+      {creativeDialogOpen && (
+        <CreativeGenerationDialog
+          status={creativeStatus}
+          error={creativeError}
+          creative={creativeResult}
+          opportunity={selectedOpportunity}
+          board={selectedBoard}
+          onRetry={confirmBillboardSelection}
+          onPreview={() => openStreetPreview()}
+          onClose={() => {
+            if (creativeStatus !== "generating") setCreativeDialogOpen(false);
+          }}
         />
       )}
     </main>
   );
 }
 
-function OnboardingDialog({
-  step,
-  website,
-  companyName,
-  creativeBrief,
-  icp,
-  editTarget,
-  analysisStatus,
-  analysisError,
-  selectedOpportunity,
-  onWebsiteChange,
-  onAnalyze,
-  onCreativeBriefChange,
-  onIcpChange,
-  onEditTargetChange,
-  onNext,
-  onBack,
-  onOpportunitySelect,
-  onLaunch,
+function CreativeGenerationDialog({
+  status,
+  error,
+  creative,
+  opportunity,
+  board,
+  onRetry,
+  onPreview,
+  onClose,
 }: {
-  step: OnboardingStep;
-  website: string;
-  companyName: string;
-  creativeBrief: string;
-  icp: string;
-  editTarget: EditTarget;
-  analysisStatus: "idle" | "loading" | "done" | "error";
-  analysisError: string | null;
-  selectedOpportunity: CampaignOpportunity;
-  onWebsiteChange: (value: string) => void;
-  onAnalyze: (event: React.FormEvent) => void;
-  onCreativeBriefChange: (value: string) => void;
-  onIcpChange: (value: string) => void;
-  onEditTargetChange: (value: EditTarget) => void;
-  onNext: () => void;
-  onBack: () => void;
-  onOpportunitySelect: (value: CampaignOpportunity) => void;
-  onLaunch: () => void;
+  status: CreativeGenerationStatus;
+  error: string | null;
+  creative: GeneratedCreative | null;
+  opportunity: CampaignOpportunity;
+  board: RankedBoardOption;
+  onRetry: () => void;
+  onPreview: () => void;
+  onClose: () => void;
 }) {
+  const busy = status === "generating";
+
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="onboarding-title"
-        className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-xl border border-white/10 bg-white shadow-2xl"
-      >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/55 px-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="w-full max-w-lg overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-2xl shadow-ink/25">
+        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">
-              Orangeboard onboarding
+              Step 3: generate creative
             </p>
-            <h2 id="onboarding-title" className="mt-1 text-xl font-semibold tracking-tight">
-              {step === "profile" ? "Infer your brief and ICP" : "Pick the physical opportunity blob"}
-            </h2>
+            <h2 className="mt-1 text-lg font-semibold text-ink">{board.location}</h2>
+            <p className="mt-1 text-sm text-neutral-500">{opportunity.title}</p>
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
-            <span className={step === "profile" ? "text-orange-600" : "text-neutral-400"}>1. Profile</span>
-            <span className="h-px w-6 bg-neutral-200" />
-            <span className={step === "map" ? "text-orange-600" : "text-neutral-400"}>2. Map</span>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-neutral-200 text-neutral-500 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Close creative generation dialog"
+          >
+            x
+          </button>
         </div>
 
-        {step === "profile" ? (
-          <div className="max-h-[calc(92vh-73px)] overflow-y-auto p-5">
-            <form onSubmit={onAnalyze} className="grid gap-3 md:grid-cols-[1fr_auto]">
-              <label className="block">
-                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                  Company website
-                </span>
-                <input
-                  value={website}
-                  onChange={(event) => onWebsiteChange(event.target.value)}
-                  placeholder="ramp.com"
-                  inputMode="url"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="mt-2 h-11 w-full rounded-md border border-neutral-300 px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={!website.trim() || analysisStatus === "loading"}
-                className="mt-6 inline-flex h-11 items-center justify-center rounded-md bg-ink px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {analysisStatus === "loading" ? "Reading..." : "Analyze"}
-              </button>
-            </form>
-
-            {analysisError && (
-              <p className="mt-3 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-                {analysisError}
-              </p>
-            )}
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <EditableProfileCard
-                title="Creative brief"
-                eyebrow={companyName}
-                value={creativeBrief}
-                editing={editTarget === "brief"}
-                empty={analysisStatus === "idle" || analysisStatus === "loading"}
-                emptyText="Analyze the website to infer positioning, voice, and the first outdoor creative direction."
-                onEdit={() => onEditTargetChange(editTarget === "brief" ? null : "brief")}
-                onChange={onCreativeBriefChange}
-              />
-              <EditableProfileCard
-                title="ICP profile"
-                eyebrow="Passive outbound target"
-                value={icp}
-                editing={editTarget === "icp"}
-                empty={analysisStatus === "idle" || analysisStatus === "loading"}
-                emptyText="Orangeboard will infer who the campaign should reach, then use location and event signals to find physical concentration."
-                onEdit={() => onEditTargetChange(editTarget === "icp" ? null : "icp")}
-                onChange={onIcpChange}
-              />
-            </div>
-
-            <div className="mt-5 flex items-center justify-between gap-3 border-t border-neutral-200 pt-4">
-              <p className="text-xs text-neutral-500">
-                The dialog is intentionally locked until a campaign opportunity is selected.
-              </p>
-              <button
-                type="button"
-                disabled={analysisStatus === "idle" || analysisStatus === "loading"}
-                onClick={onNext}
-                className="inline-flex h-10 items-center justify-center rounded-md bg-orange-500 px-5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next: find blobs
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="grid max-h-[calc(92vh-73px)] overflow-y-auto lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="relative min-h-[620px] overflow-hidden bg-[#e9ece7]">
-              <MapTexture />
-              {opportunities.map((opportunity) => (
-                <OpportunityBlob
-                  key={opportunity.id}
-                  opportunity={opportunity}
-                  selected={selectedOpportunity.id === opportunity.id}
-                  onSelect={() => onOpportunitySelect(opportunity)}
-                />
-              ))}
-              <div className="absolute left-5 top-5 z-30 max-w-sm rounded-md border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
-                  Physical opportunity map
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-                  Blobs combine estimated ICP density, local events, office clusters,
-                  competitor locations, and available physical placements.
-                </p>
+        <div className="px-5 py-5">
+          {status === "generating" && (
+            <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-200 border-t-orange-600" />
+                <div>
+                  <p className="text-sm font-semibold text-orange-950">Generating billboard creative</p>
+                  <p className="mt-1 text-xs leading-relaxed text-orange-800">
+                    Locking copy to the selected board, local audience, and street context.
+                  </p>
+                </div>
               </div>
             </div>
+          )}
 
-            <aside className="border-t border-neutral-200 bg-white p-5 lg:border-l lg:border-t-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
-                Focused blob
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">
-                {selectedOpportunity.title}
-              </h3>
+          {status === "done" && creative && (
+            <>
+              <div className="aspect-[16/9] overflow-hidden rounded-md border border-neutral-200 bg-neutral-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={creative.imageUrl} alt="Generated billboard creative" className="h-full w-full object-cover" />
+              </div>
               <p className="mt-3 text-sm leading-relaxed text-neutral-600">
-                {selectedOpportunity.summary}
+                Creative is ready. Opening the street-view projection for final approval.
               </p>
+            </>
+          )}
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <Metric label="Score" value={selectedOpportunity.score.toString()} />
-                <Metric label="Accounts" value={selectedOpportunity.accounts.toString()} />
-                <Metric label="Events" value={selectedOpportunity.events.toString()} />
-                <Metric label="Placements" value={selectedOpportunity.placements.toString()} />
-              </div>
-
-              <div className="mt-5 space-y-3">
-                <OutputRow label="Area" value={selectedOpportunity.area} />
-                <OutputRow label="Timing" value={selectedOpportunity.timing} />
-                <OutputRow label="Creative angle" value={selectedOpportunity.creativeAngle} />
-                <OutputRow label="Outbound hook" value={selectedOpportunity.outboundHook} />
-              </div>
-
-              <div className="mt-6 flex gap-2 border-t border-neutral-200 pt-4">
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-neutral-300 bg-white px-4 text-sm font-semibold text-ink transition hover:border-neutral-400"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  onClick={onLaunch}
-                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-orange-500 px-4 text-sm font-semibold text-white transition hover:bg-orange-600"
-                >
-                  Build campaign
-                </button>
-              </div>
-            </aside>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function EditableProfileCard({
-  title,
-  eyebrow,
-  value,
-  editing,
-  empty,
-  emptyText,
-  onEdit,
-  onChange,
-}: {
-  title: string;
-  eyebrow: string;
-  value: string;
-  editing: boolean;
-  empty: boolean;
-  emptyText: string;
-  onEdit: () => void;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <section className="min-h-[280px] rounded-lg border border-neutral-200 bg-neutral-50">
-      <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-600">
-            {eyebrow}
-          </p>
-          <h3 className="mt-1 text-sm font-semibold">{title}</h3>
+          {status === "error" && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-sm font-semibold text-red-700">Creative generation failed</p>
+              <p className="mt-1 text-xs leading-relaxed text-red-700">{error ?? "Try again."}</p>
+            </div>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={empty}
-          className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:border-neutral-300 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
+
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-5 py-4">
+          {status === "error" && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="h-9 rounded-md bg-orange-500 px-4 text-sm font-semibold text-white transition hover:bg-orange-600"
+            >
+              Retry
+            </button>
+          )}
+          {status === "done" && (
+            <button
+              type="button"
+              onClick={onPreview}
+              className="h-9 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              Open street preview
+            </button>
+          )}
+          {status === "generating" && (
+            <span className="text-xs font-medium text-neutral-500">This usually takes a few seconds.</span>
+          )}
+        </div>
       </div>
-      <div className="p-4">
-        {empty ? (
-          <div className="flex min-h-[188px] items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white px-5 text-center text-sm leading-relaxed text-neutral-500">
-            {emptyText}
-          </div>
-        ) : editing ? (
-          <textarea
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            rows={9}
-            className="w-full resize-none rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
-          />
-        ) : (
-          <p className="whitespace-pre-line text-sm leading-relaxed text-neutral-700">
-            {value}
-          </p>
-        )}
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -894,11 +1616,13 @@ function OpportunityBlob({
   selected,
   compact = false,
   onSelect,
+  elevate = false,
 }: {
   opportunity: CampaignOpportunity;
   selected: boolean;
   compact?: boolean;
   onSelect: () => void;
+  elevate?: boolean;
 }) {
   return (
     <button
@@ -908,7 +1632,7 @@ function OpportunityBlob({
         "absolute z-20 -translate-x-1/2 -translate-y-1/2 text-left transition " +
         (selected ? "scale-105" : "hover:scale-[1.03]")
       }
-      style={{ left: opportunity.blob.left, top: opportunity.blob.top }}
+      style={{ left: opportunity.blob.left, top: opportunity.blob.top, zIndex: elevate ? 30 : selected ? 24 : undefined }}
       aria-label={`Focus ${opportunity.title}`}
     >
       <span
@@ -925,6 +1649,33 @@ function OpportunityBlob({
           borderRadius: opportunity.blob.radius,
         }}
       />
+      {compact && selected && (
+        <span className="pointer-events-none absolute bottom-[calc(100%+0.55rem)] left-1/2 z-40 w-max max-w-56 -translate-x-1/2 rounded-md border border-orange-200 bg-white/95 px-3 py-2 text-center shadow-md backdrop-blur">
+          <span className="block truncate text-[11px] font-bold text-ink">
+            {opportunity.title}
+          </span>
+          <span className="mt-0.5 block truncate text-[10px] font-semibold text-orange-600">
+            {opportunity.area}
+          </span>
+        </span>
+      )}
+      {compact && (
+        <span
+          className={
+            "absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-md border px-2 py-1 text-center shadow-sm backdrop-blur " +
+            (selected
+              ? "w-36 border-orange-200 bg-white/95 text-ink"
+              : "border-white/70 bg-white/70 text-orange-700")
+          }
+        >
+          <span className="block text-[10px] font-bold tabular-nums">{opportunity.score}</span>
+          {selected && (
+            <span className="mt-0.5 block truncate text-[10px] font-semibold">
+              {opportunity.area}
+            </span>
+          )}
+        </span>
+      )}
       {!compact && (
         <span className="absolute left-1/2 top-1/2 z-30 w-44 -translate-x-1/2 -translate-y-1/2 rounded-md border border-neutral-200 bg-white/95 px-3 py-2 shadow-sm">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-orange-600">
@@ -939,6 +1690,77 @@ function OpportunityBlob({
         </span>
       )}
     </button>
+  );
+}
+
+function BlobContentsPanel({ opportunity }: { opportunity: CampaignOpportunity }) {
+  const businesses = blobBusinesses(opportunity, 4);
+
+  return (
+    <div className="absolute left-4 top-4 z-30 w-[min(360px,calc(100%-2rem))] rounded-md border border-neutral-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-600">
+            Companies in this blob
+          </p>
+          <h3 className="mt-1 truncate text-sm font-semibold text-ink">{opportunity.area}</h3>
+        </div>
+        <span className="rounded-md bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700">
+          {opportunity.accounts}
+        </span>
+      </div>
+
+      <div className="mt-2">
+        <BlobSignals opportunity={opportunity} />
+      </div>
+
+      <div className="mt-3 space-y-1.5">
+        {businesses.map((business) => (
+          <div key={`${business.name}-${business.type}`} className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="truncate text-xs font-semibold text-neutral-900">{business.name}</p>
+              <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[9px] font-semibold text-neutral-500">
+                ICP
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[10px] text-neutral-500">{business.type}</p>
+            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-neutral-600">{business.reason}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BlobSignals({
+  opportunity,
+  tone = "neutral",
+}: {
+  opportunity: CampaignOpportunity;
+  tone?: "neutral" | "warm";
+}) {
+  const signals = blobSignals(opportunity);
+  const pillClass =
+    tone === "warm"
+      ? "bg-white/70 text-orange-800 ring-1 ring-orange-200"
+      : "bg-orange-50 text-orange-700";
+
+  return (
+    <div>
+      <p className={
+        "text-[10px] font-bold uppercase tracking-[0.12em] " +
+        (tone === "warm" ? "text-orange-700" : "text-neutral-400")
+      }>
+        ICP signals
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {signals.map((signal) => (
+          <span key={signal} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${pillClass}`}>
+            {signal}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1009,6 +1831,31 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function BoardBuyingFacts({ board }: { board: BoardOption }) {
+  const facts = [
+    ["Owner / seller", board.seller],
+    ["Dimensions", board.dimensions],
+    ["Facing", board.facing],
+    ["Rate card", board.rateCard],
+    ["Estimated CPM", board.estimatedCpm],
+    ["Availability", board.availability],
+    ["Media", `${board.mediaType}; ${board.lighting}`],
+    ["Restrictions", board.restrictions],
+    ["Booking contact", board.bookingContact],
+  ];
+
+  return (
+    <dl className="mt-3 grid gap-2 rounded-md border border-neutral-200 bg-white px-3 py-3 text-left">
+      {facts.map(([label, value]) => (
+        <div key={label} className="grid grid-cols-[96px,1fr] gap-2 text-[11px] leading-snug">
+          <dt className="font-semibold uppercase tracking-wide text-neutral-400">{label}</dt>
+          <dd className="text-neutral-700">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function OutputPanel({
   title,
   subtitle,
@@ -1073,46 +1920,111 @@ function BoardIcon() {
   );
 }
 
-function buildFallbackBrief(url: string): CompanyBrief {
-  const clean = url
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0]
-    .split(".")[0]
-    .replace(/[-_]/g, " ");
-  const companyName = clean
-    ? clean
-        .split(" ")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ")
-    : "Your Company";
+function ICPProfileCard({
+  matchedAccounts,
+  icp,
+  onEdit,
+}: {
+  matchedAccounts: number;
+  icp: string;
+  onEdit: () => void;
+}) {
+  const icpLower = icp.toLowerCase();
+  const roles = [
+    icpLower.includes("cfo") ? "CFO" : null,
+    icpLower.includes("controller") ? "Controller" : null,
+    icpLower.includes("revops") ? "RevOps" : null,
+    icpLower.includes("finance") ? "Finance Ops" : null,
+    icpLower.includes("engineer") ? "Engineering" : null,
+    icpLower.includes("marketing") || icpLower.includes("growth") ? "Growth" : null,
+    icpLower.includes("hr") || icpLower.includes("talent") || icpLower.includes("recruit") ? "People Ops" : null,
+  ].filter(Boolean) as string[];
+  const signals = [
+    icpLower.includes("hiring") || icpLower.includes("headcount") ? "Headcount growth" : null,
+    icpLower.includes("spend") ? "Spend management" : null,
+    icpLower.includes("series") ? "Company stage" : null,
+    icpLower.includes("san francisco") ? "SF concentration" : null,
+  ].filter(Boolean) as string[];
+  const displayRoles = roles.length ? roles.slice(0, 4) : ["Buyer", "Operator", "Decision maker"];
+  const displaySignals = signals.length ? signals.slice(0, 4) : ["Local density", "Account proximity"];
 
-  return {
-    url,
-    identity: {
-      companyName,
-      industry: "B2B software",
-      description:
-        "A B2B company that needs a concise outdoor message and a focused account-based campaign.",
-      brandAdjectives: ["direct", "credible", "modern"],
-      tagline: "Built for teams ready to scale",
-    },
-    visualSystem: {
-      primaryColor: "#f97316",
-      styleReference: "Clean enterprise campaign with strong contrast and minimal copy.",
-    },
-    campaign: {
-      coreMessage: `${companyName} helps growing teams move faster with less operational drag.`,
-      offerOrHook: "Local campaign for high-intent accounts clustered nearby.",
-      callToAction: "Book a demo",
-      campaignObjective: "awareness",
-    },
-    audience: {
-      description:
-        "Growth, finance, operations, and executive buyers at scaling B2B companies.",
-      tone: "sharp and practical",
-      contextWhenSeen: "mixed",
-    },
-    heuristic: true,
-  };
+  return (
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      {/* Cover strip */}
+      <div className="relative h-[52px] overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-700 via-neutral-800 to-ink" />
+        <div
+          className="absolute inset-0 opacity-25"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg,transparent,transparent 18px,rgba(255,255,255,0.05) 18px,rgba(255,255,255,0.05) 19px),repeating-linear-gradient(90deg,transparent,transparent 18px,rgba(255,255,255,0.05) 18px,rgba(255,255,255,0.05) 19px)",
+          }}
+        />
+        <span className="absolute bottom-2 right-3 text-[9px] font-bold uppercase tracking-[0.14em] text-white/35">
+          ICP Profile
+        </span>
+      </div>
+
+      {/* Avatar row */}
+      <div className="-mt-6 flex items-end px-3.5 pb-2">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-white bg-orange-500 shadow-md">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <circle cx="12" cy="8" r="4" fill="white" />
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" fill="white" />
+          </svg>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="mb-0.5 ml-auto text-[11px] font-medium text-neutral-400 transition hover:text-orange-500"
+        >
+          Edit
+        </button>
+      </div>
+
+      {/* Identity */}
+      <div className="px-3.5 pb-3 [&>p:nth-of-type(2)]:hidden">
+        <h3 className="text-sm font-semibold text-ink">Target ICP</h3>
+        <p className="mt-1 max-h-16 overflow-y-auto text-[11px] leading-relaxed text-neutral-500">{icp}</p>
+        <p className="mt-0.5 text-[11px] text-neutral-500">Series B-C &middot; SaaS &middot; San Francisco</p>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {displayRoles.map((r) => (
+            <span key={r} className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-600">
+              {r}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 divide-x divide-neutral-100 border-t border-neutral-100">
+        <div className="py-2.5 text-center">
+          <p className="text-sm font-bold text-ink">B-C</p>
+          <p className="text-[9px] text-neutral-400">Stage</p>
+        </div>
+        <div className="py-2.5 text-center">
+          <p className="text-sm font-bold text-ink">500</p>
+          <p className="text-[9px] text-neutral-400">Max emp.</p>
+        </div>
+        <div className="py-2.5 text-center">
+          <p className="text-sm font-bold text-orange-500">{matchedAccounts}</p>
+          <p className="text-[9px] text-neutral-400">Matched</p>
+        </div>
+      </div>
+
+      {/* Intent signals */}
+      <div className="border-t border-neutral-100 px-3.5 py-3">
+        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-neutral-400">
+          Intent signals
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {displaySignals.map((s) => (
+            <span key={s} className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+              {s}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }

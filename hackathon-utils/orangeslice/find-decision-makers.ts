@@ -26,7 +26,12 @@ export async function findMarketingLeads(
     titleSqlFilter: MARKETING_TITLE_FILTER,
     limit,
   });
-  return (employees ?? []) as DecisionMaker[];
+  return (employees ?? []).map((e) => ({
+    name: e.lp_formatted_name,
+    title: e.lp_title,
+    linkedin_url: e.lp_public_profile_url,
+    headline: e.lp_headline,
+  }));
 }
 
 /** Find C-suite at a company */
@@ -40,7 +45,12 @@ export async function findCSuite(
     titleSqlFilter: C_SUITE_FILTER,
     limit,
   });
-  return (employees ?? []) as DecisionMaker[];
+  return (employees ?? []).map((e) => ({
+    name: e.lp_formatted_name,
+    title: e.lp_title,
+    linkedin_url: e.lp_public_profile_url,
+    headline: e.lp_headline,
+  }));
 }
 
 /** Find both marketing leads and C-suite in parallel, deduplicated */

@@ -7,25 +7,30 @@ import type { RoadNet, PedWeight } from "../lib/trafficSim";
 // activity hubs on top. The intensity is the same green→red ramp sightline used.
 
 const ELEV = 1; // ground-level so lines sit on the road surface
+const EPSILON = 1e-10;
 
 type RGBA = [number, number, number, number];
+type LngLat = [number, number];
+type FlowPathPoint = [number, number, number];
 
-// weight [0,1] → gray (quiet) → green (some) → red (busy). Ported verbatim.
+// weight [0,1] → gray (quiet) → green (some) → orange/red (busy).
+// Thresholds compressed so green occupies 0.28–0.58 and red starts at 0.58,
+// giving visible gradient with the tighter hub-proximity boost.
 function trafficColor(weight: number, alpha: number): RGBA {
   const w = Math.max(0, Math.min(1, weight));
   let r: number, g: number, b: number;
-  if (w < 0.35) {
-    const t = w / 0.35;
+  if (w < 0.28) {
+    const t = w / 0.28;
     r = Math.round(118 - t * 38);
     g = Math.round(126 + t * 34);
     b = Math.round(135 - t * 55);
-  } else if (w < 0.78) {
-    const t = (w - 0.35) / 0.43;
+  } else if (w < 0.58) {
+    const t = (w - 0.28) / 0.30;
     r = Math.round(80 - t * 30);
     g = Math.round(160 + t * 70);
     b = Math.round(80 - t * 20);
   } else {
-    const t = (w - 0.78) / 0.22;
+    const t = (w - 0.58) / 0.42;
     r = Math.round(50 + t * 205);
     g = Math.round(230 - t * 185);
     b = Math.round(60 - t * 50);
@@ -91,20 +96,202 @@ export interface TrafficFlowData {
 // Build the (static) flow dataset once: weight every pedestrian segment by its
 // highway-class base + proximity to the busiest ped-count hubs at this hour.
 // Heavy-ish (segments × hubs), so the caller caches the result.
+export interface TrafficBbox {
+  minLng: number; maxLng: number;
+  minLat: number; maxLat: number;
+}
+
+function segmentIntersectsBbox(coords: [number, number][], bbox: TrafficBbox): boolean {
+  for (const c of coords) {
+    if (c[0] >= bbox.minLng && c[0] <= bbox.maxLng && c[1] >= bbox.minLat && c[1] <= bbox.maxLat) {
+      return true;
+    }
+  }
+
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1];
+    const b = coords[i];
+    if (
+      Math.max(a[0], b[0]) >= bbox.minLng &&
+      Math.min(a[0], b[0]) <= bbox.maxLng &&
+      Math.max(a[1], b[1]) >= bbox.minLat &&
+      Math.min(a[1], b[1]) <= bbox.maxLat
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function pointOnSegment(point: LngLat, a: LngLat, b: LngLat): boolean {
+  const cross = (point[0] - a[0]) * (b[1] - a[1]) - (point[1] - a[1]) * (b[0] - a[0]);
+  if (Math.abs(cross) > EPSILON) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - EPSILON &&
+    point[0] <= Math.max(a[0], b[0]) + EPSILON &&
+    point[1] >= Math.min(a[1], b[1]) - EPSILON &&
+    point[1] <= Math.max(a[1], b[1]) + EPSILON
+  );
+}
+
+function pointInPolygon(point: LngLat, polygon: LngLat[]): boolean {
+  if (polygon.length < 3) return false;
+
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (pointOnSegment(point, a, b)) return true;
+
+    const crosses = (a[1] > point[1]) !== (b[1] > point[1]);
+    if (crosses) {
+      const xAtY = ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0];
+      if (point[0] < xAtY) inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+function segmentIntersectionT(a: LngLat, b: LngLat, c: LngLat, d: LngLat): number | null {
+  const rx = b[0] - a[0];
+  const ry = b[1] - a[1];
+  const sx = d[0] - c[0];
+  const sy = d[1] - c[1];
+  const denom = rx * sy - ry * sx;
+  if (Math.abs(denom) < EPSILON) return null;
+
+  const qpx = c[0] - a[0];
+  const qpy = c[1] - a[1];
+  const t = (qpx * sy - qpy * sx) / denom;
+  const u = (qpx * ry - qpy * rx) / denom;
+  if (t < -EPSILON || t > 1 + EPSILON || u < -EPSILON || u > 1 + EPSILON) return null;
+  return Math.max(0, Math.min(1, t));
+}
+
+function atT(a: FlowPathPoint, b: FlowPathPoint, t: number): FlowPathPoint {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+}
+
+function samePoint(a: FlowPathPoint, b: FlowPathPoint): boolean {
+  return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+}
+
+function sortedUnique(values: number[]): number[] {
+  const out: number[] = [];
+  for (const v of values.sort((a, b) => a - b)) {
+    if (out.length === 0 || Math.abs(v - out[out.length - 1]) > 1e-7) out.push(v);
+  }
+  return out;
+}
+
+function clipSegmentToPolygon(a: FlowPathPoint, b: FlowPathPoint, polygon: LngLat[]): [FlowPathPoint, FlowPathPoint][] {
+  const ts = [0, 1];
+  const start: LngLat = [a[0], a[1]];
+  const end: LngLat = [b[0], b[1]];
+
+  for (let i = 0; i < polygon.length; i++) {
+    const c = polygon[i];
+    const d = polygon[(i + 1) % polygon.length];
+    if (Math.abs(c[0] - d[0]) < EPSILON && Math.abs(c[1] - d[1]) < EPSILON) continue;
+    const t = segmentIntersectionT(start, end, c, d);
+    if (t !== null) ts.push(t);
+  }
+
+  const cuts = sortedUnique(ts);
+  const pieces: [FlowPathPoint, FlowPathPoint][] = [];
+  for (let i = 1; i < cuts.length; i++) {
+    const t0 = cuts[i - 1];
+    const t1 = cuts[i];
+    if (t1 - t0 <= 1e-7) continue;
+    const mid = atT(a, b, (t0 + t1) / 2);
+    if (pointInPolygon([mid[0], mid[1]], polygon)) {
+      pieces.push([atT(a, b, t0), atT(a, b, t1)]);
+    }
+  }
+  return pieces;
+}
+
+function clipPathToPolygon(path: FlowPathPoint[], polygon: LngLat[]): FlowPathPoint[][] {
+  const paths: FlowPathPoint[][] = [];
+  let current: FlowPathPoint[] = [];
+
+  function flush() {
+    if (current.length >= 2) paths.push(current);
+    current = [];
+  }
+
+  for (let i = 1; i < path.length; i++) {
+    const pieces = clipSegmentToPolygon(path[i - 1], path[i], polygon);
+    if (pieces.length === 0) {
+      flush();
+      continue;
+    }
+
+    for (const [start, end] of pieces) {
+      if (current.length > 0 && samePoint(current[current.length - 1], start)) {
+        current.push(end);
+      } else {
+        flush();
+        current = [start, end];
+      }
+    }
+  }
+
+  flush();
+  return paths;
+}
+
+function normalizePolygon(polygon: LngLat[]): LngLat[] | null {
+  const points = polygon.filter((point) =>
+    Number.isFinite(point[0]) && Number.isFinite(point[1])
+  );
+  return points.length >= 3 ? points : null;
+}
+
+export function clipTrafficFlowToPolygon(data: TrafficFlowData, polygon: LngLat[]): TrafficFlowData {
+  const ring = normalizePolygon(polygon);
+  if (!ring) return data;
+
+  const roads: FlowRoad[] = [];
+  for (const road of data.roads) {
+    for (const path of clipPathToPolygon(road.path, ring)) {
+      roads.push({ ...road, path });
+    }
+  }
+
+  return {
+    roads,
+    points: data.points.filter((p) => pointInPolygon(p.position, ring)),
+  };
+}
+
 export function computeTrafficFlow(
   net: RoadNet,
   weights: PedWeight[],
   hour: number,
+  bbox?: TrafficBbox,
 ): TrafficFlowData {
   const points: FlowPoint[] = weights.map((w) => ({
     position: [w.lng, w.lat],
     weight: Math.max(0, Math.min(1, w.hourly?.[hour] ?? 0)),
   }));
 
-  const roads: FlowRoad[] = net.pedSegs.map((seg) => {
+  const segs = bbox
+    ? net.pedSegs.filter(s => segmentIntersectsBbox(s.coords, bbox))
+    : net.pedSegs;
+
+  const roads: FlowRoad[] = segs.map((seg) => {
     const base = KIND_BASE[seg.highway] ?? 0.3;
 
     // Boost from the nearest active ped-count hub (current hour weight).
+    // Tight falloff (τ=80m, max 200m) so only streets adjacent to busy
+    // intersections light up — far streets stay gray, near ones go green/red.
     let boost = 0;
     for (const p of points) {
       if (p.weight <= 0) continue;
@@ -116,10 +303,10 @@ export function computeTrafficFlow(
           seg.coords[i][0], seg.coords[i][1],
         );
         if (d < nearest) nearest = d;
-        if (nearest < 20) break;
+        if (nearest < 10) break;
       }
-      if (nearest > 450) continue;
-      boost = Math.max(boost, p.weight * Math.exp(-nearest / 240));
+      if (nearest > 200) continue;
+      boost = Math.max(boost, p.weight * Math.exp(-nearest / 80));
     }
 
     const weight = Math.max(0.06, Math.min(1, base * 0.55 + boost * 0.9));

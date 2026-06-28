@@ -1,4 +1,5 @@
-import { ColumnLayer } from "@deck.gl/layers";
+import type { Layer } from "@deck.gl/core";
+import { ColumnLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 
 // Ported from sightline's MapCanvas pedestrian renderer. Each agent is built from
 // extruded square columns (ColumnLayer with diskResolution:4 → a box):
@@ -10,17 +11,24 @@ export interface CrowdAgent {
   lng: number;
   lat: number;
   kind: string;
+  bearing?: number; // radians CW from north
+  profileLabel?: string;
+  isIcp?: boolean;
+  businessName?: string;
+  fitScore?: number;
 }
 
 type RGBA = [number, number, number, number];
 
 const CREAM: RGBA = [248, 224, 188, 250];
-const PEOPLE_KINDS = new Set(["walker", "runner", "cyclist", "tourist"]);
+const PEOPLE_KINDS = new Set(["walker", "runner", "cyclist", "tourist", "icp", "employee"]);
 
 const KIND_STYLE: Record<string, { radius: number; elevation: number; color: RGBA }> = {
   car: { radius: 1.3, elevation: 1.0, color: [220, 50, 50, 245] },
   bus: { radius: 1.7, elevation: 1.6, color: [59, 130, 246, 245] },
   cyclist: { radius: 0.7, elevation: 1.1, color: [255, 196, 0, 245] },
+  employee: { radius: 0.58, elevation: 1.18, color: [20, 184, 166, 245] },
+  icp: { radius: 0.58, elevation: 1.18, color: [249, 115, 22, 250] },
   runner: { radius: 0.55, elevation: 1.15, color: [122, 232, 96, 245] },
   tourist: { radius: 0.55, elevation: 1.1, color: [200, 110, 255, 245] },
   walker: { radius: 0.55, elevation: 1.15, color: [73, 145, 255, 240] },
@@ -28,7 +36,29 @@ const KIND_STYLE: Record<string, { radius: number; elevation: number; color: RGB
 
 const VEHICLE_KINDS = new Set(["car", "bus"]);
 
-export function buildCrowdLayers(agents: CrowdAgent[]): ColumnLayer<CrowdAgent>[] {
+const M_PER_LAT = 110_540;
+const M_PER_LNG = 111_320;
+const CONE_M = 12;
+const CONE_SEGS = 8;
+const FOV_RAD = (78 * Math.PI) / 180;
+const CONE_FILL: [number, number, number, number] = [255, 210, 50, 45];
+
+function conePolygon(a: CrowdAgent): [number, number][] {
+  const { lng, lat, bearing = 0 } = a;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const halfFov = FOV_RAD / 2;
+  const pts: [number, number][] = [[lng, lat]];
+  for (let i = 0; i <= CONE_SEGS; i++) {
+    const angle = bearing - halfFov + (i / CONE_SEGS) * FOV_RAD;
+    pts.push([
+      lng + (Math.sin(angle) * CONE_M) / (M_PER_LNG * cosLat),
+      lat + (Math.cos(angle) * CONE_M) / M_PER_LAT,
+    ]);
+  }
+  return pts;
+}
+
+export function buildCrowdLayers(agents: CrowdAgent[]): Layer[] {
   const groups = new Map<string, CrowdAgent[]>();
   for (const a of agents) {
     const k = a.kind ?? "walker";
@@ -37,7 +67,44 @@ export function buildCrowdLayers(agents: CrowdAgent[]): ColumnLayer<CrowdAgent>[
     else groups.set(k, [a]);
   }
 
-  const layers: ColumnLayer<CrowdAgent>[] = [];
+  const layers: Layer[] = [];
+
+  // Vision cones — flat fan at ground level, rendered before bodies so they sit underneath.
+  const pedAgents = agents.filter((a) => PEOPLE_KINDS.has(a.kind ?? "walker"));
+  if (pedAgents.length > 0) {
+    layers.push(
+      new SolidPolygonLayer<CrowdAgent>({
+        id: "crowd-ped-fov-cones",
+        data: pedAgents,
+        getPolygon: conePolygon,
+        getFillColor: CONE_FILL,
+        extruded: false,
+        filled: true,
+        pickable: false,
+      })
+    );
+  }
+
+  const labeledAgents = agents
+    .filter((a) => a.isIcp && a.profileLabel)
+    .slice(0, 32);
+  if (labeledAgents.length > 0) {
+    layers.push(
+      new TextLayer<CrowdAgent>({
+        id: "crowd-icp-labels",
+        data: labeledAgents,
+        getPosition: (a) => [a.lng, a.lat, 3.3],
+        getText: (a) => a.profileLabel ?? "ICP",
+        getSize: 10,
+        sizeUnits: "pixels",
+        getColor: [15, 23, 42, 230],
+        getTextAnchor: "middle",
+        getAlignmentBaseline: "bottom",
+        billboard: true,
+        pickable: false,
+      })
+    );
+  }
 
   for (const [kind, list] of groups.entries()) {
     const style = KIND_STYLE[kind] ?? KIND_STYLE.walker;

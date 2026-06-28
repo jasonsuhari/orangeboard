@@ -28,7 +28,7 @@ export default function SiteScrollPreview({ url }: { url: string }) {
 
   const host = useMemo(() => prettyHost(url), [url]);
   const shot = useMemo(
-    () => `https://image.thum.io/get/fullpage/width/900/${withScheme(url)}`,
+    () => `/api/screenshot?url=${encodeURIComponent(withScheme(url))}`,
     [url]
   );
 

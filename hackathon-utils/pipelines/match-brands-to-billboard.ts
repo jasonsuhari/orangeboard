@@ -66,15 +66,18 @@ export async function matchBrandsToBillboard(
     companies.map(async (company): Promise<MatchedBrand> => {
       const linkedinUrl = company.linkedin_url;
 
-      // Enrich + find contacts in parallel (contacts need linkedinUrl)
+      // Enrich + find contacts in parallel (contacts need linkedinUrl).
+      // Both are external enrichments — degrade gracefully so one provider
+      // failing (e.g. Fiber/funding lookup) doesn't drop the whole match.
       const [extended, contacts] = await Promise.all([
         company.domain || linkedinUrl
-          ? enrichCompanyExtended({ url: linkedinUrl ?? undefined, domain: company.domain ?? undefined })
+          ? enrichCompanyExtended({ url: linkedinUrl ?? undefined, domain: company.domain ?? undefined }).catch(() => null)
           : Promise.resolve(null),
-        linkedinUrl ? findMarketingLeads(linkedinUrl, 2) : Promise.resolve([]),
+        linkedinUrl ? findMarketingLeads(linkedinUrl, 2).catch(() => []) : Promise.resolve([]),
       ]);
 
-      const fundingSummary = formatFunding(extended?.crunchbase_funding);
+      const extEnriched = extended as { crunchbase_funding?: Parameters<typeof formatFunding>[0] } | null;
+      const fundingSummary = formatFunding(extEnriched?.crunchbase_funding);
 
       const companyCtx = {
         name: company.name ?? "Unknown",
@@ -89,7 +92,8 @@ export async function matchBrandsToBillboard(
       const topContact = contacts[0] ?? null;
 
       const [bestEmail, hook, pitch] = await Promise.all([
-        topContact?.linkedin_url ? getBestEmail(topContact.linkedin_url) : Promise.resolve(null),
+        // Fiber contact reveal is optional — never let it fail the match.
+        topContact?.linkedin_url ? getBestEmail(topContact.linkedin_url).catch(() => null) : Promise.resolve(null),
         generateBillboardHook(billboardCtx, companyCtx.name, companyCtx.industry ?? billboard.audienceIndustry),
         includePitch && topContact
           ? draftOutreachPitch(billboardCtx, companyCtx, {

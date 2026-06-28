@@ -1,15 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  conditionsLabel,
+  environmentLook,
+  fetchCurrentConditions,
+  type ConditionsMeta,
+} from "../lib/currentConditions";
+import { projectBillboardCorners } from "../lib/projectBillboard";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Photoreal billboard preview.
 
-   We pull a real Google Street View still framed on the actual sign location,
-   then perspective-warp the generated creative onto a draggable quad so it sits
-   on the real panel in the photo. This is the "what it looks like from the
-   sidewalk" view — the visibility readout below is an estimate from how much of
-   the frame the panel fills and how head-on it is, not a geometric sightline.
+   Pulls a real Google Street View still framed on the sign, then
+   perspective-warps the generated creative onto the mathematically projected
+   billboard quad. No user interaction needed — the placement is derived from
+   the sign's known 3D geometry and the Street View camera parameters.
    ────────────────────────────────────────────────────────────────────────── */
 
 type Corner = { x: number; y: number }; // fractions of the container [0..1]
@@ -29,6 +35,7 @@ type Meta =
   | {
       state: "ok";
       panoId: string;
+      panoLocation: { lat: number; lng: number };
       heading: number;
       distanceMeters: number;
       copyright: string;
@@ -105,6 +112,10 @@ function quadArea(pts: number[][]): number {
   return Math.abs(a) / 2;
 }
 
+function clamp(v: number, lo: number, hi: number) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
 export default function StreetViewComposite({
   lat,
   lng,
@@ -117,11 +128,12 @@ export default function StreetViewComposite({
   creativeUrl: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const sampleCanvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [meta, setMeta] = useState<Meta>({ state: "loading" });
   const [quad, setQuad] = useState<Quad>(DEFAULT_QUAD);
-  const [editing, setEditing] = useState(true);
-  const dragging = useRef<number | null>(null);
+  const [sampleFilter, setSampleFilter] = useState("");
+  const [conditions, setConditions] = useState<ConditionsMeta>({ state: "loading" });
 
   // Track the rendered size so we can convert fractional corners → pixels.
   useEffect(() => {
@@ -140,6 +152,7 @@ export default function StreetViewComposite({
     let cancelled = false;
     setMeta({ state: "loading" });
     setQuad(DEFAULT_QUAD);
+    setSampleFilter("");
     fetch(`/api/streetview?lat=${lat}&lng=${lng}`)
       .then(async (r) => {
         const j = await r.json();
@@ -149,57 +162,104 @@ export default function StreetViewComposite({
         } else if (!j.ok) {
           setMeta({ state: "none" });
         } else {
-          setMeta({
-            state: "ok",
-            panoId: j.panoId,
-            heading: j.heading,
-            distanceMeters: j.distanceMeters,
-            copyright: j.copyright,
-            date: j.date,
-          });
+          const result = {
+            state: "ok" as const,
+            panoId: j.panoId as string,
+            panoLocation: j.panoLocation as { lat: number; lng: number },
+            heading: j.heading as number,
+            distanceMeters: j.distanceMeters as number,
+            copyright: j.copyright as string,
+            date: j.date as string | null,
+          };
+          setMeta(result);
+          if (result.panoLocation) {
+            const projected = projectBillboardCorners(
+              { lng, lat },
+              result.panoLocation,
+              result.heading,
+            );
+            if (projected) setQuad(projected);
+          }
         }
       })
       .catch(() => {
         if (!cancelled) setMeta({ state: "error", message: "Street View request failed" });
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [lat, lng]);
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (dragging.current === null || !wrapRef.current) return;
-      const r = wrapRef.current.getBoundingClientRect();
-      const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-      const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-      setQuad((q) => {
-        const next = [...q] as Quad;
-        next[dragging.current as number] = { x, y };
-        return next;
+  // Fetch live conditions independently of Street View. The panorama may be
+  // historical, but the visual grade should match the billboard's current sky.
+  useEffect(() => {
+    let cancelled = false;
+    setConditions({ state: "loading" });
+    fetchCurrentConditions(lat, lng)
+      .then((data) => {
+        if (!cancelled) setConditions({ state: "ok", data });
+      })
+      .catch(() => {
+        if (!cancelled) setConditions({ state: "error" });
       });
+    return () => { cancelled = true; };
+  }, [lat, lng]);
+
+  const onStreetViewLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const canvas = sampleCanvasRef.current;
+      if (!canvas) return;
+      const S = 64;
+      canvas.width = S;
+      canvas.height = S;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(e.currentTarget, 0, 0, S, S);
+
+      // Sample pixels inside the projected billboard quad bounding box
+      const xs = quad.map((c) => c.x * S);
+      const ys = quad.map((c) => c.y * S);
+      const rx = Math.max(0, Math.floor(Math.min(...xs)));
+      const ry = Math.max(0, Math.floor(Math.min(...ys)));
+      const rw = Math.min(S - rx, Math.ceil(Math.max(...xs)) - rx);
+      const rh = Math.min(S - ry, Math.ceil(Math.max(...ys)) - ry);
+      if (rw < 2 || rh < 2) return;
+
+      const { data } = ctx.getImageData(rx, ry, rw, rh);
+      let sumR = 0, sumG = 0, sumB = 0;
+      const n = rw * rh;
+      for (let i = 0; i < n; i++) {
+        sumR += data[i * 4];
+        sumG += data[i * 4 + 1];
+        sumB += data[i * 4 + 2];
+      }
+      const R = sumR / n / 255;
+      const G = sumG / n / 255;
+      const B = sumB / n / 255;
+
+      const lum = 0.299 * R + 0.587 * G + 0.114 * B;
+      const chroma = Math.max(R, G, B) - Math.min(R, G, B);
+      const brightness = clamp(lum / 0.42, 0.6, 1.4);
+      const sat = clamp(chroma / 0.18, 0.6, 1.2);
+      setSampleFilter(`brightness(${brightness.toFixed(2)}) saturate(${sat.toFixed(2)})`);
     },
-    []
+    [quad],
   );
 
   const dstPx = quad.map((c) => [c.x * size.w, c.y * size.h]);
   const warp = size.w > 0 ? matrix3dFor(size.w, size.h, dstPx) : "none";
 
-  // Estimated prominence: share of frame filled, lightly penalized for extreme
-  // skew (a panel seen edge-on is less legible than one seen head-on).
   const share = size.w > 0 ? quadArea(dstPx) / (size.w * size.h) : 0;
   const topW = Math.hypot(dstPx[1][0] - dstPx[0][0], dstPx[1][1] - dstPx[0][1]);
   const botW = Math.hypot(dstPx[2][0] - dstPx[3][0], dstPx[2][1] - dstPx[3][1]);
   const skew = topW && botW ? Math.min(topW, botW) / Math.max(topW, botW) : 1;
   const score = Math.round(Math.min(100, share * 220 * (0.6 + 0.4 * skew)));
+  const currentConditions = conditions.state === "ok" ? conditions.data : null;
+  const environment = environmentLook(currentConditions);
+  const creativeFilter = [sampleFilter, environment.creativeFilter].filter(Boolean).join(" ");
 
   return (
     <div className="flex flex-col gap-3">
       <div
         ref={wrapRef}
-        onPointerMove={onPointerMove}
-        onPointerUp={() => (dragging.current = null)}
-        onPointerLeave={() => (dragging.current = null)}
         className="relative aspect-square w-full select-none overflow-hidden rounded-xl border border-neutral-200 bg-neutral-900"
         style={{ perspective: 1400 }}
       >
@@ -212,17 +272,30 @@ export default function StreetViewComposite({
               )}&heading=${meta.heading.toFixed(1)}&size=640x640`}
               alt={label ? `Street View near ${label}` : "Street View"}
               className="absolute inset-0 h-full w-full object-cover"
+              style={{ filter: environment.streetFilter || undefined }}
               draggable={false}
+              onLoad={onStreetViewLoad}
+              crossOrigin="anonymous"
             />
 
-            {/* Warped creative on the sign panel */}
+            {environment.backdropStyle && (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={environment.backdropStyle}
+                aria-hidden
+              />
+            )}
+
+            {/* Warped creative projected onto the sign panel */}
             <div
-              className="absolute left-0 top-0 origin-top-left overflow-hidden shadow-2xl"
+              className="absolute left-0 top-0 origin-top-left overflow-hidden"
               style={{
                 width: size.w || 1,
                 height: size.h || 1,
                 transform: warp,
-                boxShadow: "0 0 0 2px rgba(0,0,0,0.35), 0 8px 30px rgba(0,0,0,0.45)",
+                filter: creativeFilter || undefined,
+                opacity: (meta.distanceMeters > 60 ? 0.88 : 1) * environment.creativeOpacity,
+                boxShadow: environment.billboardShadow,
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -234,21 +307,20 @@ export default function StreetViewComposite({
               />
             </div>
 
-            {/* Corner handles */}
-            {editing &&
-              quad.map((c, i) => (
-                <button
-                  key={i}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    dragging.current = i;
-                    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-                  }}
-                  className="absolute z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-2 border-white bg-orange-500 shadow active:cursor-grabbing"
-                  style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%` }}
-                  aria-label={`Corner ${i + 1}`}
-                />
-              ))}
+            {environment.frontStyle && (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={environment.frontStyle}
+                aria-hidden
+              />
+            )}
+            {environment.rainStyle && (
+              <div
+                className="pointer-events-none absolute -inset-6"
+                style={environment.rainStyle}
+                aria-hidden
+              />
+            )}
           </>
         )}
 
@@ -276,21 +348,19 @@ export default function StreetViewComposite({
         )}
       </div>
 
+      {/* Hidden canvas for scene colour sampling */}
+      <canvas ref={sampleCanvasRef} style={{ display: "none" }} aria-hidden />
+
       {meta.state === "ok" && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <span className="font-medium text-neutral-700">Est. on-street prominence</span>
-            <span className="inline-flex h-5 items-center rounded-full bg-orange-50 px-2 font-semibold text-orange-700">
-              {score}/100
-            </span>
-            <span className="text-neutral-400">~{meta.distanceMeters}m away</span>
-          </div>
-          <button
-            onClick={() => setEditing((v) => !v)}
-            className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-600 transition hover:border-orange-200 hover:text-orange-600"
-          >
-            {editing ? "Done fitting" : "Fit to sign"}
-          </button>
+        <div className="flex items-center gap-2 text-xs text-neutral-500">
+          <span className="font-medium text-neutral-700">Est. on-street prominence</span>
+          <span className="inline-flex h-5 items-center rounded-full bg-orange-50 px-2 font-semibold text-orange-700">
+            {score}/100
+          </span>
+          <span className="text-neutral-400">~{meta.distanceMeters}m away</span>
+          {currentConditions && (
+            <span className="text-neutral-400">Live: {conditionsLabel(currentConditions)}</span>
+          )}
         </div>
       )}
     </div>

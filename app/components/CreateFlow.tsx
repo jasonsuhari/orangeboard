@@ -89,6 +89,7 @@ export default function CreateFlow() {
             source: creative.source,
           })
         );
+        localStorage.setItem("vs:brief", JSON.stringify(nextBrief));
       } catch {
         /* storage may be unavailable; the map falls back to the sample */
       }
@@ -262,45 +263,121 @@ export default function CreateFlow() {
 }
 
 function BriefCard({ brief, done }: { brief: CompanyBrief; done: boolean }) {
-  const color = brief.visualSystem.primaryColor || "#F97316";
+  const primary = validHex(brief.visualSystem.primaryColor) ?? "#F97316";
+  const secondary = validHex(brief.visualSystem.secondaryColor);
+  const accents = (brief.visualSystem.accentColors ?? [])
+    .map(validHex)
+    .filter((hex): hex is string => Boolean(hex))
+    .filter((hex) => hex !== primary && hex !== secondary)
+    .slice(0, 2);
+  const onPrimary = readableOnHex(primary);
+  const mutedOnPrimary =
+    onPrimary === "#ffffff" ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.48)";
+  const gradientColors = [primary, secondary, ...accents].filter((hex): hex is string => Boolean(hex));
+
+  const paletteSwatches: { hex: string; label: string }[] = [
+    { hex: primary, label: "Primary" },
+    secondary
+      ? { hex: secondary, label: "Secondary" }
+      : { hex: tintHex(primary, 0.7), label: "Tint" },
+    ...accents.map((hex, index) => ({ hex, label: `Accent ${index + 1}` })),
+    { hex: onPrimary === "#ffffff" ? "#0a0a0a" : "#ffffff", label: "Ink" },
+  ];
+
   return (
-    <div className="h-full rounded-2xl border border-neutral-200 bg-white p-6 text-left shadow-lg shadow-neutral-900/5">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-widest text-orange-500">Creative brief</span>
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-left shadow-lg shadow-neutral-900/5">
+      {/* Brand header */}
+      <div
+        className="relative shrink-0 px-5 pb-6 pt-5"
+        style={{
+          background: `linear-gradient(140deg, ${shadeHex(primary, 0.14)}, ${primary} 55%, ${shadeHex(primary, -0.2)})`,
+        }}
+      >
         {brief.heuristic && (
-          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">
+          <span
+            className="absolute right-3 top-3 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm"
+            style={{ color: mutedOnPrimary }}
+          >
             heuristic
           </span>
         )}
+        <span className="block text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: mutedOnPrimary }}>
+          Creative brief
+        </span>
+        <h3 className="mt-1.5 text-xl font-bold leading-tight tracking-tight" style={{ color: onPrimary }}>
+          {brief.identity.companyName}
+        </h3>
+        {brief.identity.tagline && (
+          <p
+            className="mt-1 text-sm leading-snug"
+            style={{ color: onPrimary === "#ffffff" ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.6)" }}
+          >
+            &ldquo;{brief.identity.tagline}&rdquo;
+          </p>
+        )}
+        <p className="mt-0.5 text-xs" style={{ color: mutedOnPrimary }}>
+          {brief.identity.industry}
+        </p>
       </div>
-      <div className="mt-3 flex items-center gap-3">
-        <span className="h-9 w-9 shrink-0 rounded-lg border border-neutral-200" style={{ background: color }} />
-        <div>
-          <h3 className="text-lg font-semibold leading-tight tracking-tight">{brief.identity.companyName}</h3>
-          <p className="text-xs text-neutral-500">{brief.identity.industry}</p>
+
+      {/* Color palette */}
+      <div className="shrink-0 border-b border-neutral-100 bg-neutral-50/80 px-5 py-4">
+        <p className="mb-3 text-[9px] font-bold uppercase tracking-[0.16em] text-neutral-400">Color palette</p>
+        <div
+          className="mb-4 h-7 rounded-lg"
+          style={{
+            background:
+              gradientColors.length > 1
+                ? `linear-gradient(90deg, ${gradientColors.join(", ")})`
+                : `linear-gradient(90deg, ${shadeHex(primary, 0.35)}, ${primary}, ${shadeHex(primary, -0.28)})`,
+          }}
+        />
+        <div className="flex flex-wrap gap-4">
+          {paletteSwatches.map((s) => (
+            <ColorSwatch key={s.label} hex={s.hex} label={s.label} />
+          ))}
         </div>
       </div>
 
-      <dl className="mt-4 space-y-3 text-sm">
+      {/* Fields */}
+      <dl className="flex-1 space-y-3 px-5 py-4 text-sm">
         <Field label="Core message" value={brief.campaign.coreMessage} />
-        {brief.identity.tagline && <Field label="Tagline" value={brief.identity.tagline} />}
         <Field label="Audience" value={brief.audience.description} />
         <Field label="Call to action" value={brief.campaign.callToAction} />
+        {brief.visualSystem.styleReference && (
+          <Field label="Style ref" value={brief.visualSystem.styleReference} />
+        )}
       </dl>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {brief.identity.brandAdjectives?.slice(0, 4).map((a) => (
-          <span key={a} className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-700">
-            {a}
-          </span>
-        ))}
+      {/* Adjective pills + status */}
+      <div className="shrink-0 px-5 pb-5">
+        <div className="flex flex-wrap gap-1.5">
+          {brief.identity.brandAdjectives?.slice(0, 4).map((a) => (
+            <span
+              key={a}
+              className="rounded-full px-2.5 py-1 text-xs font-medium"
+              style={{ background: `${primary}1a`, color: primary }}
+            >
+              {a}
+            </span>
+          ))}
+        </div>
+        {!done && (
+          <p className="mt-3 flex items-center gap-2 text-xs text-neutral-400">
+            <Spinner /> Painting the billboard…
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {!done && (
-        <p className="mt-4 flex items-center gap-2 text-xs text-neutral-400">
-          <Spinner /> Painting the billboard…
-        </p>
-      )}
+function ColorSwatch({ hex, label }: { hex: string; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="h-9 w-9 rounded-xl ring-1 ring-black/10" style={{ background: hex }} />
+      <span className="font-mono text-[9px] uppercase tracking-tight text-neutral-500">{hex}</span>
+      <span className="text-[9px] text-neutral-400">{label}</span>
     </div>
   );
 }
@@ -344,4 +421,33 @@ function Check() {
 
 function Dot() {
   return <span className="h-1.5 w-1.5 rounded-full bg-current" />;
+}
+
+// ─── Colour helpers ──────────────────────────────────────────────────────────
+
+function validHex(h?: string): string | undefined {
+  return h && /^#[0-9a-fA-F]{6}$/i.test(h) ? h.toUpperCase() : undefined;
+}
+
+function readableOnHex(hex: string): "#ffffff" | "#0a0a0a" {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.58 ? "#0a0a0a" : "#ffffff";
+}
+
+function shadeHex(hex: string, amt: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(parseInt(hex.slice(1, 3), 16) * (1 + amt));
+  const g = clamp(parseInt(hex.slice(3, 5), 16) * (1 + amt));
+  const b = clamp(parseInt(hex.slice(5, 7), 16) * (1 + amt));
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function tintHex(hex: string, t: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const m = (c: number) => Math.round(c + (255 - c) * t);
+  return `#${[m(r), m(g), m(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }

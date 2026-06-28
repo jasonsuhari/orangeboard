@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { getServices } from "./_client";
 
 export interface BillboardContext {
@@ -31,13 +30,17 @@ export interface OutreachPitch {
   fullEmail: string;
 }
 
-const pitchSchema = z.object({
-  subjectLine: z.string(),
-  openingHook: z.string(),
-  valueProposition: z.string(),
-  callToAction: z.string(),
-  fullEmail: z.string(),
-});
+const pitchSchema = {
+  type: "object",
+  properties: {
+    subjectLine: { type: "string" },
+    openingHook: { type: "string" },
+    valueProposition: { type: "string" },
+    callToAction: { type: "string" },
+    fullEmail: { type: "string" },
+  },
+  required: ["subjectLine", "openingHook", "valueProposition", "callToAction", "fullEmail"],
+} satisfies Record<string, unknown>;
 
 export async function draftOutreachPitch(
   billboard: BillboardContext,
@@ -46,7 +49,7 @@ export async function draftOutreachPitch(
 ): Promise<OutreachPitch> {
   const s = getServices();
 
-  const { object } = await s.ai.generateObject({
+  const { object } = await s.ai.generateObject<OutreachPitch>({
     prompt: `
 You are a senior growth marketer writing a cold outreach pitch to sell a premium billboard placement.
 
@@ -87,13 +90,13 @@ export async function generateBillboardHook(
 ): Promise<string> {
   const s = getServices();
 
-  const { object } = await s.ai.generateObject({
+  const { object } = await s.ai.generateObject<{ hook: string }>({
     prompt: `
 Write a 1-sentence pitch hook for why ${companyName} (${industry}) should buy a billboard at ${billboard.location}.
 The billboard reaches ${billboard.footTrafficPerHour} ${billboard.audienceProfile} per hour.
 Predicted ROAS: ${billboard.predictedRoas}×. Be specific and punchy. Under 25 words.
 `.trim(),
-    schema: z.object({ hook: z.string() }),
+    schema: { type: "object", properties: { hook: { type: "string" } }, required: ["hook"] },
   });
 
   return object.hook;

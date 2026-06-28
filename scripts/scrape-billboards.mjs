@@ -17,6 +17,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { enrichGeoJson, toCSV } from "./billboard-buying-data.mjs";
 
 const PROXY = "https://sfplanninggis.org/proxy/DotNet/proxy.ashx";
 const LAYER =
@@ -93,25 +94,6 @@ function toGeoJSON(features) {
   };
 }
 
-function csvCell(v) {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function toCSV(geojson) {
-  const rows = geojson.features.map((f) => ({
-    lon: f.geometry.coordinates[0],
-    lat: f.geometry.coordinates[1],
-    ...f.properties,
-  }));
-  if (rows.length === 0) return "";
-  const cols = Object.keys(rows[0]);
-  const lines = [cols.join(",")];
-  for (const r of rows) lines.push(cols.map((c) => csvCell(r[c])).join(","));
-  return lines.join("\n");
-}
-
 async function main() {
   const total = await getCount();
   console.log(`GASP inventory: ${total} records. Fetching in pages of ${PAGE}…`);
@@ -124,7 +106,7 @@ async function main() {
     if (page.length === 0) break;
   }
 
-  const geojson = toGeoJSON(all);
+  const geojson = enrichGeoJson(toGeoJSON(all));
   await mkdir(OUT_DIR, { recursive: true });
   await writeFile(
     join(OUT_DIR, "sf-billboards.geojson"),

@@ -1,0 +1,47 @@
+{
+  "identity": {
+    "companyName": "Fluent",
+    "industry": "Accessibility Technology",
+    "description": "Fluent is an AI agent designed to operate your computer through diverse inputs, making technology accessible for everyone.",
+    "brandAdjectives": [
+      "inclusive",
+      "innovative",
+      "empowering"
+    ],
+    "tagline": "Your computer, your way."
+  },
+  "visualSystem": {
+    "primaryColor": "#FFE500",
+    "secondaryColor": "#0D0D0F",
+    "accentColors": [
+      "#FEC62B"
+    ],
+    "logoUrl": null,
+    "fonts": [
+      "Helvetica Neue"
+    ],
+    "styleReference": "think Microsoft Surface",
+    "avoidList": [
+      "cluttered designs",
+      "overly complex messaging"
+    ]
+  },
+  "campaign": {
+    "coreMessage": "Transform how you interact with technology.",
+    "offerOrHook": "Experience seamless accessibility.",
+    "callToAction": "Book a demo now.",
+    "campaignObjective": "awareness"
+  },
+  "audience": {
+    "description": "Tech-savvy individuals and professionals seeking accessible solutions for diverse needs.",
+    "tone": "friendly and supportive",
+    "contextWhenSeen": "scrolling"
+  },
+  "url": "https://getfluent.tech/",
+  "media": {
+    "imageUrl": "/brief-cache/getfluent.tech.png",
+    "prompt": "Bold, striking 16:9 out-of-home billboard ad for Fluent — \"Your computer, your way.\", Fluent is an AI agent designed to operate your computer through diverse inputs, making technology accessible for everyone.. think Microsoft Surface visual style, dominated by a deep blue palette. Scene evokes Tech-savvy individuals and professionals seeking accessible solutions for diverse needs. — vivid and emotionally charged. Energy of the CTA \"Book a demo now.\". Do not show: cluttered designs, overly complex messaging. No text or letters anywhere in the image; leave clean negative space for a later headline overlay.",
+    "source": "cache",
+    "model": "gpt-image-2"
+  }
+}

@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -224,3 +224,4 @@ out/
 next-env.d.ts
 .env*.local
 npm-debug.log*
+.vercel

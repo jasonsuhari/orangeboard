@@ -1,66 +1,45 @@
 "use client";
 import { useState } from "react";
 
-const NAV_ITEMS = [
-  { id: "discover", label: "Discover", icon: "◈" },
-  { id: "audience", label: "Audience", icon: "⊙" },
-  { id: "creative", label: "Creative", icon: "◇" },
-  { id: "simulate", label: "Simulate", icon: "△" },
-  { id: "outreach", label: "Outreach", icon: "→" },
-] as const;
-
-type NavId = (typeof NAV_ITEMS)[number]["id"];
-
 const TRAP_H = 68;
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const DUR = "0.26s";
 
 interface MapNavProps {
-  placeMode?: "billboard" | "pedestrian" | null;
   showTraffic?: boolean;
-  visionEnabled?: boolean;
+  showJournal?: boolean;
+  campaignBusy?: boolean;
   onToggleTraffic?: () => void;
-  onToggleVision?: () => void;
-  onSpawnBillboard?: () => void;
-  onSpawnPedestrian?: () => void;
+  onToggleJournal?: () => void;
+  onOpenCampaign?: () => void;
 }
 
 export default function MapNav({
-  placeMode = null,
   showTraffic = false,
-  visionEnabled = false,
+  showJournal = false,
+  campaignBusy = false,
   onToggleTraffic,
-  onToggleVision,
-  onSpawnBillboard,
-  onSpawnPedestrian,
+  onToggleJournal,
+  onOpenCampaign,
 }: MapNavProps) {
-  const [active, setActive] = useState<NavId>("discover");
   const [collapsed, setCollapsed] = useState(false);
 
-  const toolBtn = (
-    label: string,
-    icon: string,
-    armed: boolean,
-    title: string,
-    onClick?: () => void
-  ) => (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 5,
-        background: armed ? "rgba(249,115,22,0.16)" : "none",
-        border: "none",
-        borderRadius: 8,
-        cursor: "pointer",
-        padding: "4px 8px",
-        color: armed ? "#f97316" : "#525252",
-        transition: "color 0.15s ease, background 0.15s ease",
-      }}
-    >
+  const toolStyle = (armed: boolean) => ({
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 5,
+    background: armed ? "rgba(249,115,22,0.16)" : "none",
+    border: "none",
+    borderRadius: 8,
+    cursor: "pointer",
+    padding: "4px 8px",
+    color: armed ? "#f97316" : "#525252",
+    transition: "color 0.15s ease, background 0.15s ease",
+  });
+
+  const toolContent = (label: string, icon: string) => (
+    <>
       <span style={{ fontSize: 14, lineHeight: 1 }}>{icon}</span>
       <span
         style={{
@@ -73,6 +52,29 @@ export default function MapNav({
       >
         {label}
       </span>
+    </>
+  );
+
+  const toolBtn = (
+    label: string,
+    icon: string,
+    armed: boolean,
+    title: string,
+    onClick?: () => void,
+    disabled = false
+  ) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      disabled={disabled}
+      style={{
+        ...toolStyle(armed),
+        cursor: disabled ? "wait" : "pointer",
+        opacity: disabled ? 0.62 : 1,
+      }}
+    >
+      {toolContent(label, icon)}
     </button>
   );
 
@@ -166,83 +168,30 @@ export default function MapNav({
           <div
             style={{
               display: "flex",
-              justifyContent: "space-around",
+              justifyContent: "center",
               alignItems: "center",
+              gap: 36,
               width: "100%",
               paddingLeft: 26,
               paddingRight: 26,
             }}
           >
             {toolBtn(
-              "Billboard", "＋▭", placeMode === "billboard",
-              "Place a billboard — then click the map (Esc to cancel)",
-              onSpawnBillboard
-            )}
-            {toolBtn(
-              "Walker", "＋웃", placeMode === "pedestrian",
-              "Place a walker — then click the map (Esc to cancel)",
-              onSpawnPedestrian
-            )}
-            {toolBtn(
               "Traffic", "〰", showTraffic,
               "Toggle the SF foot-traffic flow lines on/off",
               onToggleTraffic
             )}
             {toolBtn(
-              "Sight", "FOV", visionEnabled,
-              "Toggle pedestrian billboard sightline captures on/off",
-              onToggleVision
+              "Journal", "❏", showJournal,
+              "Toggle the pedestrian vision journal on/off",
+              onToggleJournal
             )}
-            <span style={{ width: 1, height: 30, background: "rgba(0,0,0,0.08)", flexShrink: 0 }} />
-            {NAV_ITEMS.map((item) => {
-              const isActive = active === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActive(item.id)}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 5,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "4px 10px",
-                    color: isActive ? "#f97316" : "#737373",
-                    transition: "color 0.15s ease",
-                  }}
-                >
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>{item.icon}</span>
-                  <span
-                    style={{
-                      fontSize: 8.5,
-                      letterSpacing: "0.12em",
-                      textTransform: "uppercase",
-                      fontFamily: "ui-monospace, 'SF Mono', Consolas, monospace",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                  {isActive && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        bottom: -4,
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        width: 3,
-                        height: 3,
-                        borderRadius: "50%",
-                        background: "#f97316",
-                      }}
-                    />
-                  )}
-                </button>
-              );
-            })}
+            {toolBtn(
+              "Campaign", "◎", false,
+              "Export campaign PDF",
+              onOpenCampaign,
+              campaignBusy
+            )}
           </div>
         </div>
       </div>

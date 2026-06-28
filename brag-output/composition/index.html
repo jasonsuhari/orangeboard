@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orangeboard — Launch</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="audio-data.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { background: #0a0a0a; }
+
+      [data-composition-id="orangeboard"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0a;
+        font-family: Inter, sans-serif;
+        color: #0a0a0a;
+        -webkit-font-smoothing: antialiased;
+      }
+      [data-composition-id="orangeboard"] .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+      [data-composition-id="orangeboard"] #s1 { opacity: 1; z-index: 1; }
+      [data-composition-id="orangeboard"] #s2 { z-index: 2; }
+      [data-composition-id="orangeboard"] #s3 { z-index: 3; }
+      [data-composition-id="orangeboard"] #s4 { z-index: 4; }
+      [data-composition-id="orangeboard"] #s5 { z-index: 5; }
+
+      .tnum { font-variant-numeric: tabular-nums; }
+
+      /* ============ SCENE 1 — HOOK ============ */
+      #s1 { background: #0a0a0a; }
+      #s1 .bg-glow {
+        position: absolute; left: 50%; bottom: -340px; transform: translateX(-50%);
+        width: 1500px; height: 900px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(249,115,22,0.30), rgba(249,115,22,0.0) 72%);
+      }
+      #s1 .grid {
+        position: absolute; inset: 0; opacity: 0.5;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+        background-size: 64px 64px;
+        -webkit-mask-image: radial-gradient(120% 90% at 30% 60%, #000 35%, transparent 80%);
+                mask-image: radial-gradient(120% 90% at 30% 60%, #000 35%, transparent 80%);
+      }
+      #s1 .ghost {
+        position: absolute; right: -120px; top: 38%;
+        font-size: 560px; font-weight: 800; letter-spacing: -0.04em;
+        color: rgba(249,115,22,0.10); line-height: 0.8; white-space: nowrap;
+      }
+      #s1 .wrap { position: absolute; left: 150px; top: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 30px; }
+      #s1 .tag { display: inline-flex; align-items: center; gap: 14px; font-size: 24px; font-weight: 700; letter-spacing: 0.22em; color: #fb923c; text-transform: uppercase; }
+      #s1 .tag .dot { width: 13px; height: 13px; border-radius: 50%; background: #f97316; box-shadow: 0 0 24px rgba(249,115,22,0.9); }
+      #s1 .rule { width: 360px; height: 3px; background: #f97316; transform-origin: left center; }
+      #s1 .head { font-size: 118px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.02; color: #ffffff; max-width: 1320px; }
+      #s1 .head .accent { color: #f97316; }
+      #s1 .sub { font-size: 30px; font-weight: 500; color: #8a8a86; letter-spacing: 0.01em; max-width: 980px; }
+
+      /* ============ SCENE 2 — SIGNAL MAP ============ */
+      #s2 { background: #0a0a0a; }
+      #s2 .sky { position: absolute; left: 0; top: 0; width: 100%; height: 48%; background: #0c0a09; overflow: hidden; }
+      #s2 .horizon { position: absolute; left: 50%; bottom: -260px; transform: translateX(-50%); width: 1700px; height: 520px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(232,164,92,0.55), rgba(232,164,92,0.10) 55%, rgba(232,164,92,0) 75%); }
+      #s2 .stars { position: absolute; inset: 0; opacity: 0.6;
+        background-image: radial-gradient(rgba(255,255,255,0.5) 1px, transparent 1px); background-size: 120px 90px; }
+      #s2 .water { position: absolute; left: 0; top: calc(48% - 14px); width: 100%; height: 26px; background: #3d6e8c; opacity: 0.85;
+        box-shadow: 0 0 40px rgba(61,110,140,0.6); }
+      #s2 .skyline { position: absolute; left: 0; bottom: 52%; width: 100%; height: 240px; display: flex; align-items: flex-end; justify-content: center; gap: 8px; padding: 0 40px; }
+      #s2 .bld { width: 52px; background: #0d0e14; border-top: 2px solid #20222e; border-left: 1px solid #15161d; box-shadow: inset -10px 0 14px rgba(0,0,0,0.5); }
+      #s2 .ground { position: absolute; left: 0; bottom: 0; width: 100%; height: 56%; background: linear-gradient(180deg, #211d17 0%, #18150f 60%, #110f0b 100%); overflow: hidden; }
+      #s2 .grid3d { position: absolute; left: -50%; bottom: -60px; width: 200%; height: 1500px; transform: perspective(620px) rotateX(66deg); transform-origin: bottom center;
+        background-image:
+          linear-gradient(rgba(168,163,154,0.16) 2px, transparent 2px),
+          linear-gradient(90deg, rgba(168,163,154,0.16) 2px, transparent 2px);
+        background-size: 120px 120px;
+        -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 38%);
+                mask-image: linear-gradient(180deg, transparent 0%, #000 38%); }
+      #s2 .mainst { position: absolute; left: -50%; bottom: -60px; width: 200%; height: 1500px; transform: perspective(620px) rotateX(66deg); transform-origin: bottom center;
+        background-image: linear-gradient(90deg, rgba(249,115,22,0.0) 0, rgba(249,115,22,0.0) calc(50% - 5px), rgba(249,115,22,0.55) 50%, rgba(249,115,22,0.0) calc(50% + 5px));
+        -webkit-mask-image: linear-gradient(180deg, transparent 8%, #000 50%); mask-image: linear-gradient(180deg, transparent 8%, #000 50%); }
+      /* floating product chrome */
+      #s2 .pill { position: absolute; display: inline-flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.96); border: 1px solid #e5e5e5; border-radius: 10px; padding: 12px 18px; font-size: 22px; font-weight: 600; color: #0a0a0a; box-shadow: 0 12px 34px rgba(0,0,0,0.35); }
+      #s2 .pill.tl { left: 48px; top: 44px; }
+      #s2 .pill.tr { right: 48px; top: 44px; gap: 22px; }
+      #s2 .pill.tr .lg { display: inline-flex; align-items: center; gap: 9px; color: #525252; font-weight: 600; }
+      #s2 .pill .sw { width: 16px; height: 16px; border-radius: 50%; }
+      #s2 .nav { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.94); border: 1px solid #e5e5e5; border-radius: 999px; padding: 12px 22px; font-size: 22px; font-weight: 700; color: #0a0a0a; box-shadow: 0 12px 34px rgba(0,0,0,0.35); }
+      #s2 .nav .seg { width: 30px; height: 6px; border-radius: 3px; background: #e5e5e5; }
+      #s2 .nav .seg.on { background: #f97316; }
+      #s2 .acct { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #0a0a0a; border: 3px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+      /* blob */
+      #s2 .blob { position: absolute; left: 51%; top: 50%; transform: translate(-50%,-50%); }
+      #s2 .blob .core { width: 340px; height: 230px; border-radius: 56% 44% 58% 42% / 50% 56% 44% 50%; transform: rotate(-8deg);
+        background: rgba(249,115,22,0.46); border: 3px solid #ffffff; box-shadow: 0 0 0 6px rgba(249,115,22,0.18), 0 18px 60px rgba(249,115,22,0.30); }
+      #s2 .blob .glow { position: absolute; left: 50%; top: 50%; width: 560px; height: 440px; transform: translate(-50%,-50%); border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(249,115,22,0.45), rgba(249,115,22,0) 70%); pointer-events: none; }
+      #s2 .label { position: absolute; left: calc(51% + 150px); top: calc(50% - 150px); width: 430px; background: rgba(255,255,255,0.97); border: 1px solid #e5e5e5; border-radius: 14px; padding: 20px 22px; box-shadow: 0 22px 60px rgba(0,0,0,0.4); }
+      #s2 .label .k { font-size: 19px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #ea580c; }
+      #s2 .label .t { margin-top: 8px; font-size: 34px; font-weight: 800; letter-spacing: -0.01em; color: #0a0a0a; }
+      #s2 .label .m { margin-top: 10px; font-size: 24px; font-weight: 600; color: #525252; }
+      #s2 .label .m b { color: #0a0a0a; }
+      #s2 .pin { position: absolute; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: #f97316; border: 4px solid #ffffff; color: #fff; font-size: 19px; font-weight: 800; box-shadow: 0 10px 26px rgba(0,0,0,0.45); }
+      #s2 .pin::after { content: ""; position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 14px solid #ffffff; }
+
+      /* ============ SHARED WORKSPACE (S3/S4) ============ */
+      .ws { background: #f7f7f5; }
+      .ws .grain { position: absolute; inset: 0; opacity: 0.6; background-image: radial-gradient(rgba(10,10,10,0.05) 1px, transparent 1px); background-size: 26px 26px; }
+      .ws .topbar { position: absolute; left: 0; top: 0; width: 100%; height: 96px; display: flex; align-items: center; gap: 16px; padding: 0 64px; border-bottom: 2px solid #ececea; background: #ffffff; }
+      .ws .topbar .logo { width: 44px; height: 44px; border-radius: 11px; background: #f97316; display: grid; place-items: center; }
+      .ws .topbar .nm { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; }
+      .ws .topbar .crumb { margin-left: auto; font-size: 22px; font-weight: 600; color: #8a8a86; }
+      .ws .stepwrap { display: inline-flex; gap: 10px; margin-left: 28px; }
+      .ws .step { font-size: 18px; font-weight: 700; color: #8a8a86; padding: 8px 16px; border: 2px solid #ececea; border-radius: 8px; background: #fff; }
+      .ws .step.on { color: #ea580c; border-color: #f97316; background: #fff7ed; }
+
+      /* SCENE 3 */
+      #s3 .stage { position: absolute; left: 64px; right: 64px; top: 150px; bottom: 64px; display: grid; grid-template-columns: 588px 1fr; gap: 30px; }
+      #s3 .card { background: #ffffff; border: 2px solid #ececea; border-radius: 18px; padding: 36px; box-shadow: 0 24px 60px rgba(10,10,10,0.10); display: flex; flex-direction: column; }
+      #s3 .card .ey { font-size: 19px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #ea580c; }
+      #s3 .card .row1 { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+      #s3 .card .loc { font-size: 50px; font-weight: 800; letter-spacing: -0.02em; }
+      #s3 .card .score { font-size: 40px; font-weight: 800; color: #ea580c; background: #fff7ed; border-radius: 12px; padding: 8px 22px; }
+      #s3 .card .note { margin-top: 14px; font-size: 25px; font-weight: 500; color: #525252; line-height: 1.35; }
+      #s3 .card .metrics { margin-top: 28px; display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+      #s3 .tile { background: #f7f7f5; border: 2px solid #ececea; border-radius: 12px; padding: 18px 10px; text-align: center; }
+      #s3 .tile .v { font-size: 38px; font-weight: 800; }
+      #s3 .tile .l { margin-top: 4px; font-size: 19px; font-weight: 600; color: #8a8a86; }
+      #s3 .card .cta { margin-top: auto; height: 76px; border-radius: 12px; background: #f97316; color: #fff; font-size: 28px; font-weight: 800; display: grid; place-items: center; box-shadow: 0 16px 36px rgba(249,115,22,0.35); }
+      #s3 .list { background: #ffffff; border: 2px solid #ececea; border-radius: 18px; padding: 30px 32px; box-shadow: 0 24px 60px rgba(10,10,10,0.08); }
+      #s3 .list .h { font-size: 26px; font-weight: 800; letter-spacing: 0.02em; }
+      #s3 .list .h .sub { display: block; margin-top: 4px; font-size: 19px; font-weight: 600; color: #8a8a86; letter-spacing: 0; }
+      #s3 .brow { margin-top: 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 26px; border-radius: 14px; border: 2px solid #ececea; background: #fff; }
+      #s3 .brow.best { background: #fff7ed; border-color: #f97316; box-shadow: inset 6px 0 0 #f97316; }
+      #s3 .brow > div { min-width: 0; }
+      #s3 .brow .bl { font-size: 32px; font-weight: 800; letter-spacing: -0.01em; }
+      #s3 .brow .meta { margin-top: 6px; font-size: 20px; font-weight: 600; color: #8a8a86; }
+      #s3 .brow .fit { font-size: 42px; font-weight: 800; color: #ea580c; }
+
+      /* SCENE 4 */
+      #s4 .stage { position: absolute; left: 64px; right: 64px; top: 150px; bottom: 64px; display: grid; grid-template-columns: 1fr 720px; gap: 36px; }
+      #s4 .leftcol { display: flex; flex-direction: column; }
+      #s4 .crlabel { font-size: 20px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #8a8a86; }
+      #s4 .billwrap { margin-top: 18px; perspective: 1600px; }
+      #s4 .bill { aspect-ratio: 16/9; border-radius: 18px; background: #0a0a0a; padding: 46px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 40px 90px rgba(10,10,10,0.42); border: 1px solid #1c1c1c; }
+      #s4 .bill .bl { font-size: 22px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: #fdba74; }
+      #s4 .bill .big { font-size: 56px; font-weight: 800; line-height: 1.06; letter-spacing: -0.02em; color: #ffffff; }
+      #s4 .bill .sm { font-size: 24px; font-weight: 500; color: #9a9a96; }
+      #s4 .crfoot { margin-top: 20px; font-size: 23px; font-weight: 600; color: #525252; }
+      #s4 .crfoot b { color: #0a0a0a; }
+      #s4 .queue { background: #ffffff; border: 2px solid #ececea; border-radius: 18px; padding: 30px 32px; box-shadow: 0 24px 60px rgba(10,10,10,0.08); display: flex; flex-direction: column; }
+      #s4 .queue .h { font-size: 26px; font-weight: 800; }
+      #s4 .queue .h .sub { display: block; margin-top: 4px; font-size: 19px; font-weight: 600; color: #8a8a86; }
+      #s4 .obrow { margin-top: 20px; padding: 24px 26px; border: 2px solid #ececea; border-radius: 14px; background: #fff; }
+      #s4 .obrow .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+      #s4 .obrow .co { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; }
+      #s4 .obrow .ct { margin-top: 4px; font-size: 21px; font-weight: 600; color: #8a8a86; }
+      #s4 .obrow .chip { font-size: 19px; font-weight: 700; padding: 8px 16px; border-radius: 8px; background: #f0f0ee; color: #525252; white-space: nowrap; }
+      #s4 .obrow .chip.draft { background: #fff7ed; color: #ea580c; }
+      #s4 .obrow .hook { margin-top: 14px; font-size: 22px; font-weight: 500; color: #525252; line-height: 1.34; }
+
+      /* ============ SCENE 5 — OUTRO ============ */
+      #s5 { background: #0a0a0a; }
+      #s5 .bg-glow { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 1400px; height: 1000px; border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(249,115,22,0.26), rgba(249,115,22,0) 70%); }
+      #s5 .grid { position: absolute; inset: 0; opacity: 0.4;
+        background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+        background-size: 64px 64px; -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 75%); mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 75%); }
+      #s5 .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+      #s5 .lockup { display: inline-flex; align-items: center; gap: 26px; }
+      #s5 .glyph { width: 96px; height: 96px; border-radius: 22px; background: #f97316; display: grid; place-items: center; box-shadow: 0 0 60px rgba(249,115,22,0.55); }
+      #s5 .name { font-size: 104px; font-weight: 800; letter-spacing: -0.03em; color: #ffffff; }
+      #s5 .tag { font-size: 38px; font-weight: 600; color: #cfcfca; letter-spacing: 0; max-width: 1200px; text-align: center; }
+      #s5 .foot { margin-top: 16px; display: inline-flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8a86; border: 2px solid #2a2a2a; border-radius: 999px; padding: 10px 22px; }
+      #s5 .foot .dot { width: 12px; height: 12px; border-radius: 50%; background: #f97316; }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="orangeboard" data-start="0" data-duration="21" data-width="1920" data-height="1080">
+
+      <!-- ===================== SCENE 1 ===================== -->
+      <div class="scene" id="s1">
+        <div class="bg-glow"></div>
+        <div class="grid"></div>
+        <div class="ghost" data-layout-ignore>ABM</div>
+        <div class="wrap">
+          <div class="tag"><span class="dot"></span>Physical ABM // San Francisco</div>
+          <div class="rule"></div>
+          <div class="head">Your ICP doesn't<br>live in an <span class="accent">inbox.</span></div>
+          <div class="sub">It commutes through the same four blocks every morning.</div>
+        </div>
+      </div>
+
+      <!-- ===================== SCENE 2 ===================== -->
+      <div class="scene" id="s2">
+        <div class="ground">
+          <div class="grid3d" data-layout-allow-overflow></div>
+          <div class="mainst" data-layout-allow-overflow></div>
+        </div>
+        <div class="sky">
+          <div class="stars"></div>
+          <div class="horizon" data-layout-allow-overflow></div>
+        </div>
+        <div class="skyline" id="skyline"></div>
+        <div class="water"></div>
+
+        <div class="pill tl">San Francisco signal map</div>
+        <div class="pill tr">
+          <span class="lg"><span class="sw" style="background:#f97316"></span>Boards</span>
+          <span class="lg"><span class="sw" style="background:#0a0a0a"></span>Accounts</span>
+        </div>
+
+        <div id="accounts"></div>
+
+        <div class="blob" id="blob">
+          <div class="glow" id="blob-glow"></div>
+          <div class="core"></div>
+        </div>
+        <div class="label" id="blob-label">
+          <div class="k">Opportunity blob</div>
+          <div class="t">SoMa SaaS Finance Cluster</div>
+          <div class="m"><b>31</b> accounts · <b>4</b> placements · Score <b>96</b></div>
+        </div>
+
+        <div class="pin" id="pin1" style="left:43%; top:58%;">539</div>
+        <div class="pin" id="pin2" style="left:58%; top:64%;">425</div>
+        <div class="pin" id="pin3" style="left:49%; top:71%;">560</div>
+
+        <div class="nav"><span class="seg on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="tnum" style="margin-left:6px">1 / 4</span></div>
+      </div>
+
+      <!-- ===================== SCENE 3 ===================== -->
+      <div class="scene ws" id="s3">
+        <div class="grain"></div>
+        <div class="topbar">
+          <div class="logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="10" rx="2" fill="#fff"/><path d="M12 15v5M8.5 20h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <div class="nm">Orangeboard</div>
+          <div class="stepwrap"><span class="step">1 Accounts</span><span class="step on">2 Boards</span><span class="step">3 Creative</span><span class="step">4 Outbound</span></div>
+          <div class="crumb">Opportunity Map + Billboard Inventory</div>
+        </div>
+        <div class="stage">
+          <div class="card" id="s3-card">
+            <div class="ey">Best board for this blob</div>
+            <div class="row1"><div class="loc">539 Bryant St</div><div class="score tnum" id="s3-score">96</div></div>
+            <div class="note">Permitted SF GASP sign on the 4th & Brannan tech corridor — repeat commute exposure.</div>
+            <div class="metrics">
+              <div class="tile"><div class="v tnum">31</div><div class="l">Accounts</div></div>
+              <div class="tile"><div class="v">High</div><div class="l">Visibility</div></div>
+              <div class="tile"><div class="v tnum">18s</div><div class="l">Dwell</div></div>
+            </div>
+            <div class="cta" id="s3-cta">Export Package</div>
+          </div>
+          <div class="list">
+            <div class="h" id="s3-lh">Ranked Boards<span class="sub">Permitted inventory, scored against the SoMa cluster</span></div>
+            <div class="brow best" id="row1"><div><div class="bl">539 Bryant St</div><div class="meta">High visibility · 31 nearby</div></div><div class="fit tnum">96</div></div>
+            <div class="brow" id="row2"><div><div class="bl">425 04th St</div><div class="meta">Medium visibility · 28 nearby</div></div><div class="fit tnum">88</div></div>
+            <div class="brow" id="row3"><div><div class="bl">560 Brannan St</div><div class="meta">Medium visibility · 25 nearby</div></div><div class="fit tnum">80</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== SCENE 4 ===================== -->
+      <div class="scene ws" id="s4">
+        <div class="grain"></div>
+        <div class="topbar">
+          <div class="logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="10" rx="2" fill="#fff"/><path d="M12 15v5M8.5 20h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <div class="nm">Orangeboard</div>
+          <div class="stepwrap"><span class="step">1 Accounts</span><span class="step">2 Boards</span><span class="step on">3 Creative</span><span class="step on">4 Outbound</span></div>
+          <div class="crumb">Campaign Output</div>
+        </div>
+        <div class="stage">
+          <div class="leftcol" id="s4-left">
+            <div class="crlabel">Local creative · generated for this street</div>
+            <div class="billwrap"><div class="bill" id="bill-card">
+              <div class="bl">Ramp near 4th St</div>
+              <div class="big">Finance teams should close month before the ride home.</div>
+              <div class="sm">Built for account concentration in SoMa.</div>
+            </div></div>
+            <div class="crfoot">The board goes up. <b>The email follows.</b></div>
+          </div>
+          <div class="queue">
+            <div class="h" id="s4-qh">Outbound Queue<span class="sub">Orange Slice + Fiber, coordinated to the placement</span></div>
+            <div class="obrow" id="ob1">
+              <div class="top"><div><div class="co">Northstar Ledger</div><div class="ct">VP Finance · Series B SaaS</div></div><div class="chip draft">Drafted</div></div>
+              <div class="hook">"We are running a local finance-ops campaign around your SoMa team."</div>
+            </div>
+            <div class="obrow" id="ob2">
+              <div class="top"><div><div class="co">Atlas Workflow</div><div class="ct">Controller · B2B software</div></div><div class="chip">Ready</div></div>
+            </div>
+            <div class="obrow" id="ob3">
+              <div class="top"><div><div class="co">Mergebase</div><div class="ct">Head of Ops · API platform</div></div><div class="chip">Needs contact</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== SCENE 5 ===================== -->
+      <div class="scene" id="s5">
+        <div class="bg-glow"></div>
+        <div class="grid"></div>
+        <div class="wrap">
+          <div class="lockup">
+            <div class="glyph" id="s5-glyph"><svg width="56" height="56" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="10" rx="2" fill="#fff"/><path d="M12 15v5M8.5 20h7" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+            <div class="name" id="s5-name">Orangeboard.</div>
+          </div>
+          <div class="tag" id="s5-tag">Find where your ICP gathers, then launch the physical play.</div>
+          <div class="foot" id="s5-foot"><span class="dot"></span>YC AI Growth Hackathon</div>
+        </div>
+      </div>
+
+      <!-- ===================== AUDIO ===================== -->
+      <audio id="music" data-start="0" data-duration="21" data-track-index="10" data-volume="0.3" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"></audio>
+      <audio id="sfx-hook"  data-start="0.50"  data-duration="0.6" data-track-index="11" data-volume="0.55" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-blob"  data-start="4.02"  data-duration="0.6" data-track-index="12" data-volume="0.75" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-pin1"  data-start="5.03"  data-duration="0.3" data-track-index="13" data-volume="0.5"  src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="sfx-pin2"  data-start="5.53"  data-duration="0.3" data-track-index="14" data-volume="0.5"  src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-pin3"  data-start="6.03"  data-duration="0.3" data-track-index="15" data-volume="0.5"  src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-row1"  data-start="9.05"  data-duration="0.5" data-track-index="16" data-volume="0.62" src="assets/sfx/casino/card-slide-1.ogg"></audio>
+      <audio id="sfx-row2"  data-start="9.55"  data-duration="0.5" data-track-index="17" data-volume="0.62" src="assets/sfx/casino/card-slide-3.ogg"></audio>
+      <audio id="sfx-row3"  data-start="10.05" data-duration="0.5" data-track-index="18" data-volume="0.62" src="assets/sfx/casino/card-slide-5.ogg"></audio>
+      <audio id="sfx-exp"   data-start="11.50" data-duration="0.3" data-track-index="19" data-volume="0.6"  src="assets/sfx/interface/click_001.ogg"></audio>
+      <audio id="sfx-cr"    data-start="12.42" data-duration="0.5" data-track-index="20" data-volume="0.6"  src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-ob1"   data-start="13.50" data-duration="0.4" data-track-index="21" data-volume="0.5"  src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-ob2"   data-start="14.00" data-duration="0.4" data-track-index="22" data-volume="0.5"  src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-ob3"   data-start="14.50" data-duration="0.4" data-track-index="23" data-volume="0.5"  src="assets/sfx/interface/click_002.ogg"></audio>
+      <audio id="sfx-logo"  data-start="18.52" data-duration="1.4" data-track-index="24" data-volume="0.8"  src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+
+    </div>
+
+    <script>
+      (function () {
+        // deterministic PRNG
+        function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+        // Build dusk skyline (deterministic)
+        var rnd = mulberry32(7);
+        var sk = document.getElementById('skyline');
+        for (var i = 0; i < 26; i++) {
+          var b = document.createElement('div');
+          b.className = 'bld';
+          var h = 70 + Math.floor(rnd() * 170);
+          var w = 38 + Math.floor(rnd() * 36);
+          b.style.height = h + 'px';
+          b.style.width = w + 'px';
+          // a few warm-lit windows feel
+          if (rnd() > 0.7) b.style.boxShadow = 'inset -10px 0 14px rgba(0,0,0,0.5), inset 0 0 0 2px rgba(232,164,92,0.04)';
+          sk.appendChild(b);
+        }
+
+        // Scatter ink account dots over the ground region (deterministic, avoiding the blob center)
+        var rnd2 = mulberry32(21);
+        var ac = document.getElementById('accounts');
+        var spots = [[34,60],[39,72],[46,55],[62,57],[66,70],[57,77],[44,82],[70,62],[37,84],[60,67],[52,86],[41,66]];
+        for (var s = 0; s < spots.length; s++) {
+          var d = document.createElement('div');
+          d.className = 'acct';
+          d.style.left = spots[s][0] + '%';
+          d.style.top = spots[s][1] + '%';
+          ac.appendChild(d);
+        }
+
+        gsap.registerPlugin();
+        var tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+
+        // initial scene visibility
+        tl.set(['#s2','#s3','#s4','#s5'], { opacity: 0 }, 0);
+        tl.set('#s1', { opacity: 1 }, 0);
+
+        /* ---------- SCENE 1 (0.0 - 3.4) ---------- */
+        tl.fromTo('#s1 .tag', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.55, ease: 'back.out(1.6)' }, 0.15);
+        tl.fromTo('#s1 .rule', { scaleX: 0 }, { scaleX: 1, duration: 0.55, ease: 'expo.out' }, 0.30);
+        tl.fromTo('#s1 .head', { opacity: 0, y: 70 }, { opacity: 1, y: 0, duration: 0.7, ease: 'expo.out' }, 0.45); // SFX impactSoft @0.50
+        tl.fromTo('#s1 .sub', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.95);
+        tl.fromTo('#s1 .ghost', { opacity: 0, xPercent: 9, yPercent: -50 }, { opacity: 1, xPercent: -5, yPercent: -50, duration: 3.0, ease: 'power1.out' }, 0.2); // entrance + ambient drift
+        tl.to('#s1 .bg-glow', { scale: 1.08, opacity: 0.85, duration: 2.2, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 0.2); // ambient breathe
+
+        // S1 -> S2 zoom-through
+        tl.to('#s1', { opacity: 0, scale: 1.06, duration: 0.28, ease: 'power2.in' }, 3.14);
+        tl.fromTo('#s2', { opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1, duration: 0.34, ease: 'power3.out' }, 3.18);
+
+        /* ---------- SCENE 2 (3.4 - 8.4) ---------- */
+        tl.fromTo('#s2 .ground', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' }, 3.42);
+        tl.fromTo('#s2 .skyline', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out' }, 3.5);
+        tl.fromTo('#s2 .water', { opacity: 0 }, { opacity: 0.85, duration: 0.6 }, 3.6);
+        tl.to('#s2 .grid3d', { backgroundPosition: '0px 120px', duration: 5.0, ease: 'none' }, 3.4); // ambient street drift
+        tl.fromTo('#s2 .pill.tl', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.5, ease: 'back.out(1.5)' }, 3.6);
+        tl.fromTo('#s2 .pill.tr', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.5, ease: 'back.out(1.5)' }, 3.72);
+        tl.fromTo('#s2 .nav', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 3.8);
+        tl.fromTo('#s2 .acct', { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 0.4, stagger: 0.03, ease: 'back.out(2)' }, 3.7);
+
+        // blob ignite — beat-locked: 4.02s
+        tl.fromTo('#blob', { opacity: 0, scale: 0.55 }, { opacity: 1, scale: 1, duration: 0.6, ease: 'back.out(1.7)' }, 4.02); // beat-locked 4.02 (SFX impactSoft @4.02)
+        tl.fromTo('#blob-label', { opacity: 0, y: 24, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power3.out' }, 4.40);
+        // board pins — beat-grid: 5.03 / 5.53 / 6.03
+        tl.fromTo('#pin1', { opacity: 0, scale: 0, y: 16 }, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(2.2)' }, 5.03); // beat-grid
+        tl.fromTo('#pin2', { opacity: 0, scale: 0, y: 16 }, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(2.2)' }, 5.53); // beat-grid
+        tl.fromTo('#pin3', { opacity: 0, scale: 0, y: 16 }, { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: 'back.out(2.2)' }, 6.03); // beat-grid
+
+        // S2 -> S3 zoom-through
+        tl.to('#s2', { opacity: 0, scale: 1.05, duration: 0.28, ease: 'power2.in' }, 8.14);
+        tl.fromTo('#s3', { opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1, duration: 0.34, ease: 'power3.out' }, 8.18);
+
+        /* ---------- SCENE 3 (8.4 - 12.2) ---------- */
+        tl.fromTo('#s3 .topbar', { opacity: 0, y: -24 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 8.42);
+        tl.fromTo('#s3-card', { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 0.6, ease: 'expo.out' }, 8.55);
+        tl.fromTo('#s3-score', { scale: 0 }, { scale: 1, duration: 0.5, ease: 'back.out(2.4)' }, 8.9);
+        tl.fromTo('#s3 .tile', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.08, ease: 'back.out(1.6)' }, 9.0);
+        tl.fromTo('#s3-cta', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 9.3);
+        tl.fromTo('#s3 .list .h', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 8.7);
+        // ranked rows — beat-grid: 9.05 / 9.55 / 10.05 (slide fast, then hold)
+        tl.fromTo('#row1', { opacity: 0, x: 70 }, { opacity: 1, x: 0, duration: 0.42, ease: 'power3.out' }, 9.05); // beat-grid
+        tl.fromTo('#row2', { opacity: 0, x: 70 }, { opacity: 1, x: 0, duration: 0.42, ease: 'power3.out' }, 9.55); // beat-grid
+        tl.fromTo('#row3', { opacity: 0, x: 70 }, { opacity: 1, x: 0, duration: 0.42, ease: 'power3.out' }, 10.05); // beat-grid
+        // export button click pulse @11.5
+        tl.to('#s3-cta', { scale: 0.95, duration: 0.1, ease: 'power2.in' }, 11.5);
+        tl.to('#s3-cta', { scale: 1, duration: 0.28, ease: 'back.out(2)' }, 11.6);
+
+        // S3 -> S4 zoom-through
+        tl.to('#s3', { opacity: 0, scale: 1.04, duration: 0.28, ease: 'power2.in' }, 11.94);
+        tl.fromTo('#s4', { opacity: 0, scale: 0.96 }, { opacity: 1, scale: 1, duration: 0.34, ease: 'power3.out' }, 11.98);
+
+        /* ---------- SCENE 4 (12.2 - 17.9) ---------- */
+        tl.fromTo('#s4 .topbar', { opacity: 0, y: -24 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 12.22);
+        tl.fromTo('#s4 .crlabel', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' }, 12.32);
+        // billboard card snaps in (perspective tilt) @12.42 (SFX drop)
+        tl.fromTo('#s4 .billwrap', { opacity: 0, y: 40, rotationY: -14, scale: 0.93 }, { opacity: 1, y: 0, rotationY: -6, scale: 1, duration: 0.6, ease: 'power3.out' }, 12.42);
+        tl.fromTo('#s4 .crfoot', { opacity: 0 }, { opacity: 1, duration: 0.5 }, 13.0);
+        tl.fromTo('#s4 .queue .h', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' }, 12.7);
+        // outbound rows — beat-grid: 13.5 / 14.0 / 14.5 (hold after)
+        tl.fromTo('#ob1', { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power3.out' }, 13.5); // beat-grid
+        tl.fromTo('#ob2', { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power3.out' }, 14.0); // beat-grid
+        tl.fromTo('#ob3', { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.45, ease: 'power3.out' }, 14.5); // beat-grid
+
+        // S4 -> S5 zoom-through
+        tl.to('#s4', { opacity: 0, scale: 1.04, duration: 0.3, ease: 'power2.in' }, 17.62);
+        tl.fromTo('#s5', { opacity: 0, scale: 0.97 }, { opacity: 1, scale: 1, duration: 0.34, ease: 'power3.out' }, 17.68);
+
+        /* ---------- SCENE 5 (17.9 - 21.0) ---------- */
+        tl.fromTo('#s5 .bg-glow', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.8, ease: 'power2.out' }, 17.8);
+        tl.fromTo('#s5-glyph', { opacity: 0, scale: 0.4, rotation: -12 }, { opacity: 1, scale: 1, rotation: 0, duration: 0.5, ease: 'back.out(1.8)' }, 18.0);
+        // name slam — beat-locked: 18.52s (strong cue 1.00; SFX impactBell @18.52)
+        tl.fromTo('#s5-name', { opacity: 0, scale: 1.35, y: 8 }, { opacity: 1, scale: 1, y: 0, duration: 0.5, ease: 'back.out(2.2)' }, 18.52); // beat-locked 18.52
+        tl.fromTo('#s5-tag', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }, 19.05);
+        tl.fromTo('#s5-foot', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 19.45);
+        tl.to('#s5 .bg-glow', { scale: 1.06, duration: 1.4, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 19.0); // ambient breathe
+        // final fade (allowed on last scene)
+        tl.to('#s5 .wrap', { opacity: 0, duration: 0.45, ease: 'power2.in' }, 20.62);
+        tl.to('#s5 .bg-glow', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 20.6);
+
+        /* ---------- AUDIO-REACTIVE (subtle) ---------- */
+        // blob glow + scale breathe with bass/RMS; billboard card presence with amplitude.
+        var glow = document.getElementById('blob-glow');
+        var bill = document.getElementById('bill-card');
+        var AD = window.AUDIO_DATA;
+        if (AD && AD.frames) {
+          var fps = AD.fps || 30;
+          for (var f = 0; f < AD.frames.length; f++) {
+            (function (frame) {
+              tl.call(function () {
+                var b = frame.bands;
+                var bass = (b[0] + b[1]) * 0.5;
+                var rms = 0; for (var k = 0; k < b.length; k++) rms += b[k]; rms /= b.length;
+                if (glow) {
+                  glow.style.transform = 'translate(-50%,-50%) scale(' + (1 + bass * 0.20).toFixed(3) + ')';
+                  glow.style.opacity = (0.40 + rms * 0.45).toFixed(3);
+                }
+                if (bill) {
+                  bill.style.filter = 'brightness(' + (1 + rms * 0.09).toFixed(3) + ')';
+                }
+              }, null, f / fps);
+            })(AD.frames[f]);
+          }
+        }
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["orangeboard"] = tl;
+      })();
+    </script>
+  </body>
+</html>

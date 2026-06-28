@@ -33,7 +33,7 @@ export async function enrichCompanyExtended(opts: EnrichOpts) {
 /** Find the LinkedIn URL for a company by name (when you don't have the URL yet) */
 export async function findCompanyLinkedIn(name: string): Promise<string | null> {
   const s = getServices();
-  return s.company.linkedin.findUrl({ name });
+  return s.company.linkedin.findUrl({ companyName: name });
 }
 
 /** Get a formatted funding summary string for pitch context */
