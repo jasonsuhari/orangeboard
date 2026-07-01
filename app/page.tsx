@@ -16,7 +16,7 @@ export default function Home() {
   return (
     <main className="fixed inset-0 overflow-hidden bg-[#f45a00] text-white">
       <video
-        className="absolute inset-0 h-full w-full object-cover object-center opacity-80 saturate-[1.08]"
+        className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
         poster="/peel-placeholder-poster.png"
         autoPlay
         muted
@@ -28,8 +28,7 @@ export default function Home() {
         <source src="/peel-placeholder-bg.mp4" type="video/mp4" />
       </video>
 
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,91,0,0.94)_0%,rgba(255,91,0,0.78)_34%,rgba(255,91,0,0.34)_62%,rgba(255,91,0,0.15)_100%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_22%,rgba(255,255,255,0.24),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0)_40%,rgba(111,32,0,0.22)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[#f45a00]/58" />
 
       <header className="relative z-20 flex h-[72px] items-center justify-between px-5 sm:px-8 lg:px-12">
         <Link href="/" className="flex min-w-0 items-center gap-3" aria-label="Peel home">
@@ -115,8 +114,8 @@ function PeelMark() {
     <span className="relative block h-12 w-12 shrink-0 sm:h-16 sm:w-16" aria-hidden="true">
       <span className="absolute left-[14%] top-[42%] h-[44%] w-[28%] rounded-b-lg rounded-tl-lg bg-white shadow-[0_12px_30px_rgba(126,38,0,0.12)]" />
       <span className="absolute left-[20%] top-[10%] h-[58%] w-[64%] rounded-full bg-white shadow-[0_18px_38px_rgba(126,38,0,0.16)]" />
-      <span className="absolute left-[16%] top-[12%] h-[42%] w-[42%] rounded-br-[70%] rounded-tl-full bg-gradient-to-br from-white via-orange-50 to-[#ffad73] opacity-95" />
-      <span className="absolute left-[15%] top-[48%] h-[21%] w-[28%] rounded-tl-lg bg-gradient-to-br from-white to-[#ffc08c]" />
+      <span className="absolute left-[16%] top-[12%] h-[42%] w-[42%] rounded-br-[70%] rounded-tl-full bg-white/88" />
+      <span className="absolute left-[15%] top-[48%] h-[21%] w-[28%] rounded-tl-lg bg-orange-100" />
     </span>
   );
 }
@@ -141,7 +140,6 @@ function CampaignPreview() {
 
         <div className="grid flex-1 min-h-0 grid-cols-[1fr_230px]">
           <div className="relative overflow-hidden bg-[#ffefe3]">
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(239,76,0,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(239,76,0,0.1)_1px,transparent_1px)] bg-[size:36px_36px]" />
             <span className="absolute left-[6%] top-[50%] h-3 w-[92%] -rotate-6 rounded-full bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.52)]" />
             <span className="absolute left-[42%] top-[-10%] h-[120%] w-5 rotate-12 rounded-full bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.52)]" />
             <span className="absolute left-[60%] top-[-8%] h-[118%] w-5 rotate-[-18deg] rounded-full bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.52)]" />
