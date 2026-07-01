@@ -14,9 +14,9 @@ const campaignSignals = [
 
 export default function Home() {
   return (
-    <main className="fixed inset-0 overflow-hidden bg-[#f45a00] text-white">
+    <main className="fixed inset-0 overflow-hidden bg-black text-white">
       <video
-        className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
+        className="absolute inset-0 h-full w-full object-cover object-center"
         poster="/peel-placeholder-poster.png"
         autoPlay
         muted
@@ -28,9 +28,7 @@ export default function Home() {
         <source src="/peel-placeholder-bg.mp4" type="video/mp4" />
       </video>
 
-      <div className="pointer-events-none absolute inset-0 bg-[#f45a00]/58" />
-
-      <header className="relative z-20 flex h-[72px] items-center justify-between px-5 sm:px-8 lg:px-12">
+      <header className="relative z-20 flex h-[72px] items-center justify-between px-5 [text-shadow:0_2px_14px_rgba(0,0,0,0.38)] sm:px-8 lg:px-12">
         <Link href="/" className="flex min-w-0 items-center gap-3" aria-label="Peel home">
           <PeelMark />
           <span className="text-3xl font-black tracking-[-0.08em] sm:text-[2.5rem]">
@@ -52,14 +50,14 @@ export default function Home() {
 
         <Link
           href="/map"
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-black text-[#ef4c00] shadow-[0_18px_48px_rgba(116,34,0,0.22)] transition hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0"
+          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-black text-[#ef4c00] shadow-[0_18px_48px_rgba(0,0,0,0.2)] [text-shadow:none] transition hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0"
         >
           Open map
         </Link>
       </header>
 
       <section className="relative z-10 grid h-[calc(100dvh-72px)] min-h-0 grid-cols-1 lg:grid-cols-[44%_56%]">
-        <div className="flex min-h-0 flex-col justify-center px-5 pb-8 pt-3 sm:px-8 lg:px-12 lg:pb-12">
+        <div className="flex min-h-0 flex-col justify-center px-5 pb-8 pt-3 [text-shadow:0_3px_20px_rgba(0,0,0,0.42)] sm:px-8 lg:px-12 lg:pb-12">
           <p className="mb-4 text-[11px] font-black uppercase tracking-[0.28em] text-white/72 sm:text-xs">
             Physical ABM for B2B teams
           </p>
@@ -75,13 +73,13 @@ export default function Home() {
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/map"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black text-[#ef4c00] shadow-[0_18px_50px_rgba(116,34,0,0.26)] transition hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0"
+              className="inline-flex h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-black text-[#ef4c00] shadow-[0_18px_50px_rgba(0,0,0,0.24)] [text-shadow:none] transition hover:-translate-y-0.5 hover:bg-orange-50 active:translate-y-0"
             >
               Plan a campaign
             </Link>
             <Link
               href="/sightline"
-              className="inline-flex h-12 items-center justify-center rounded-full border border-white/55 px-6 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-white/10 active:translate-y-0"
+              className="inline-flex h-12 items-center justify-center rounded-full border border-white/65 bg-black/12 px-6 text-sm font-black text-white [text-shadow:none] transition hover:-translate-y-0.5 hover:bg-black/20 active:translate-y-0"
             >
               Preview placement
             </Link>
@@ -89,7 +87,7 @@ export default function Home() {
 
           <div className="mt-8 grid max-w-[560px] grid-cols-3 gap-2">
             {proofItems.map((item) => (
-              <div key={item} className="rounded-2xl border border-white/18 bg-white/12 px-3 py-3 backdrop-blur-md">
+              <div key={item} className="rounded-2xl border border-white/24 bg-black/16 px-3 py-3 backdrop-blur-md">
                 <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-white/62">
                   {item.split(" ")[0]}
                 </span>
