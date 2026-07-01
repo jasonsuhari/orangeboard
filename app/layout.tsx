@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Orangeboard - Passive outbound for physical ABM",
+  title: "Peel - Physical ad campaigns for B2B teams",
   description:
-    "Orangeboard helps B2B teams discover physical-world ICP opportunities, generate local creative, and coordinate outbound around real-world touchpoints.",
+    "Peel helps B2B teams discover physical-world ICP opportunities, book local ad inventory, generate creative, and coordinate outbound around real-world touchpoints.",
 };
 
 export default function RootLayout({
