@@ -5,24 +5,23 @@ import Link from "next/link";
 import Map from "../components/Map";
 import OnboardingDialog from "../components/OnboardingDialog";
 
-const ONBOARDING_KEY = "orangeboard:onboarded";
+function isCampaignLaunch() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("campaign") === "1" || params.has("mode");
+}
 
 export default function MapPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    if (!localStorage.getItem(ONBOARDING_KEY)) {
-      setShowOnboarding(true);
-    }
+    setShowOnboarding(!isCampaignLaunch());
   }, []);
 
   function handleComplete() {
-    localStorage.setItem(ONBOARDING_KEY, "1");
     setShowOnboarding(false);
   }
 
   function handleRestart() {
-    localStorage.removeItem(ONBOARDING_KEY);
     setShowOnboarding(true);
   }
 
