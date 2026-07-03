@@ -220,8 +220,12 @@ __marimo__/
 # Node / Next.js
 node_modules/
 .next/
+.next-dev/
 out/
 next-env.d.ts
 .env*.local
 npm-debug.log*
 .vercel
+
+# Local waitlist capture
+.waitlist.local.jsonl

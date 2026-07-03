@@ -214,9 +214,13 @@ interface Props {
 
 export default function BillboardMeshLayer({ billboards, map }: Props) {
   const billboardsRef = useRef(billboards)
-  billboardsRef.current = billboards
+  const needsInstanceUpdateRef = useRef(true)
 
-  useEffect(() => { map?.triggerRepaint() }, [map, billboards])
+  useEffect(() => {
+    billboardsRef.current = billboards
+    needsInstanceUpdateRef.current = true
+    map?.triggerRepaint()
+  }, [map, billboards])
 
   useEffect(() => {
     if (!map) return
@@ -245,6 +249,7 @@ export default function BillboardMeshLayer({ billboards, map }: Props) {
       renderingMode: '3d' as const,
       onAdd: (_map: mapboxgl.Map, gl: WebGLRenderingContext) => {
         state = createState(map, gl, faceMat)
+        needsInstanceUpdateRef.current = true
       },
       // mapbox-gl v3 passes the camera matrix as the *second positional arg*
       // (a 16-element column-major array), not an object. Older code read
@@ -257,10 +262,12 @@ export default function BillboardMeshLayer({ billboards, map }: Props) {
           : (matrix as { modelViewProjectionMatrix: number[] }).modelViewProjectionMatrix
         if (!mvp) return
         state.camera.projectionMatrix.fromArray(mvp)
-        updateInstances(map, state, billboardsRef.current)
+        if (needsInstanceUpdateRef.current) {
+          updateInstances(map, state, billboardsRef.current)
+          needsInstanceUpdateRef.current = false
+        }
         state.renderer.resetState()
         state.renderer.render(state.scene, state.camera)
-        map.triggerRepaint()
       },
       onRemove: () => {
         removed = true

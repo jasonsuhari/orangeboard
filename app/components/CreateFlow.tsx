@@ -343,6 +343,9 @@ function BriefCard({ brief, done }: { brief: CompanyBrief; done: boolean }) {
       <dl className="flex-1 space-y-3 px-5 py-4 text-sm">
         <Field label="Core message" value={brief.campaign.coreMessage} />
         <Field label="Audience" value={brief.audience.description} />
+        <Field label="Positioning" value={brief.strategy?.positioning} />
+        <Field label="Promise" value={brief.strategy?.customerPromise} />
+        <Field label="Proof" value={brief.strategy?.proofPoints?.slice(0, 3).join(" / ")} />
         <Field label="Call to action" value={brief.campaign.callToAction} />
         {brief.visualSystem.styleReference && (
           <Field label="Style ref" value={brief.visualSystem.styleReference} />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Map from "../components/Map";
 import OnboardingDialog from "../components/OnboardingDialog";
+import type { OpportunityWithPolygon } from "../lib/opportunityBlobs";
 
 function isCampaignLaunch() {
   const params = new URLSearchParams(window.location.search);
@@ -12,6 +13,10 @@ function isCampaignLaunch() {
 
 export default function MapPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Step 3 of the onboarding tutorial: the dialog fetches the opportunity
+  // blobs and hands them here; the map renders them and reports taps back.
+  const [onboardingZones, setOnboardingZones] = useState<OpportunityWithPolygon[] | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   useEffect(() => {
     setShowOnboarding(!isCampaignLaunch());
@@ -19,15 +24,24 @@ export default function MapPage() {
 
   function handleComplete() {
     setShowOnboarding(false);
+    setOnboardingZones(null);
+    setSelectedZoneId(null);
   }
 
   function handleRestart() {
+    setOnboardingZones(null);
+    setSelectedZoneId(null);
     setShowOnboarding(true);
   }
 
   return (
     <main style={{ position: "fixed", inset: 0 }}>
-      <Map />
+      <Map
+        onboardingActive={showOnboarding}
+        onboardingBlobs={showOnboarding ? onboardingZones : null}
+        selectedBlobId={selectedZoneId}
+        onSelectBlob={setSelectedZoneId}
+      />
       {!showOnboarding && (
         <div className="absolute left-4 top-4 z-50 flex items-center gap-2">
           <button
@@ -54,7 +68,14 @@ export default function MapPage() {
           </Link>
         </div>
       )}
-      {showOnboarding && <OnboardingDialog onComplete={handleComplete} />}
+      {showOnboarding && (
+        <OnboardingDialog
+          onComplete={handleComplete}
+          onZonesChange={setOnboardingZones}
+          selectedZoneId={selectedZoneId}
+          onSelectZone={setSelectedZoneId}
+        />
+      )}
     </main>
   );
 }

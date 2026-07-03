@@ -1387,12 +1387,6 @@ const SAMPLE_BRIEF: CompanyBrief = {
     tone: "clear, useful, and human",
     contextWhenSeen: "walking",
   },
-  media: {
-    imageUrl: "/brief-cache/getfluent.tech.png",
-    prompt: "Cached demo creative for Fluent.",
-    source: "cache",
-    model: "gpt-image-2",
-  },
 };
 
 const SAMPLE_OPPORTUNITY: ReportOpportunity = {

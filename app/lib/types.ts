@@ -24,12 +24,30 @@ export interface CompanyBriefCampaign {
   offerOrHook?: string;
   callToAction?: string;
   campaignObjective?: "awareness" | "conversion" | "foot-traffic" | "app-downloads";
+  headlineOptions?: string[];
 }
 
 export interface CompanyBriefAudience {
   description: string;
   tone?: string;
   contextWhenSeen?: "driving" | "walking" | "scrolling" | "mixed";
+}
+
+export interface CompanyBriefStrategy {
+  positioning?: string;
+  customerProblem?: string;
+  customerPromise?: string;
+  differentiators?: string[];
+  proofPoints?: string[];
+  messageHierarchy?: string[];
+  creativeMandatories?: string[];
+}
+
+export interface CompanyBriefSourceContext {
+  sourceSummary?: string;
+  observedClaims?: string[];
+  observedCtas?: string[];
+  evidenceSnippets?: string[];
 }
 
 /** The generated billboard creative that belongs to a brief. Lives on the
@@ -51,6 +69,8 @@ export interface CompanyBrief {
   visualSystem: CompanyBriefVisualSystem;
   campaign: CompanyBriefCampaign;
   audience: CompanyBriefAudience;
+  strategy?: CompanyBriefStrategy;
+  sourceContext?: CompanyBriefSourceContext;
   /** The billboard creative for this brief, when one has been generated. */
   media?: CreativeMedia;
   /** True when produced by the heuristic fallback rather than an LLM. */

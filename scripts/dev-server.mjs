@@ -10,6 +10,7 @@ const workspace = resolve(process.cwd());
 const rawArgs = process.argv.slice(2);
 const clean = rawArgs.includes("--clean");
 const nextArgs = rawArgs.filter((arg) => arg !== "--clean");
+const devDistDir = ".next-dev";
 
 const existingServers = findNextServers(workspace);
 
@@ -22,15 +23,19 @@ if (existingServers.length > 0) {
       : "port unknown";
     console.log(`- PID ${server.pid}: ${urls}`);
   }
-  console.log("Not starting another one, because concurrent Next dev servers can corrupt .next.");
+  console.log(`Not starting another one, because concurrent Next dev servers can corrupt ${devDistDir}.`);
   if (clean) {
-    console.log("Skipped --clean because the running server is using .next.");
+    console.log(`Skipped --clean because the running server is using ${devDistDir}.`);
   }
   process.exit(0);
 }
 
-if (clean) {
-  removeNextCache(workspace);
+const cacheIssue = clean ? "--clean requested" : getNextCacheIssue(workspace, devDistDir);
+if (cacheIssue) {
+  if (!clean) {
+    console.log(`Detected stale ${devDistDir} cache (${cacheIssue}); removing it before start.`);
+  }
+  removeNextCache(workspace, devDistDir);
 }
 
 const nextCli = require.resolve("next/dist/bin/next");
@@ -54,11 +59,13 @@ child.on("error", (error) => {
 });
 
 function findNextServers(root) {
-  return listProcesses()
+  const processes = listProcesses();
+  const currentAncestors = getAncestorPids(processes, process.pid);
+  return processes
     .filter((processInfo) => processInfo.pid !== process.pid)
+    .filter((processInfo) => !currentAncestors.has(processInfo.pid))
     .filter((processInfo) => processInfo.commandLine)
-    .filter((processInfo) => commandMentionsWorkspace(processInfo.commandLine, root))
-    .filter((processInfo) => isNextStartServer(processInfo.commandLine));
+    .filter((processInfo) => isProjectDevProcess(processInfo.commandLine, root));
 }
 
 function listProcesses() {
@@ -68,7 +75,7 @@ function listProcesses() {
       [
         "-NoProfile",
         "-Command",
-        "Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress",
       ],
       { encoding: "utf8" },
     ).trim();
@@ -80,11 +87,12 @@ function listProcesses() {
     const parsed = JSON.parse(output);
     return asArray(parsed).map((entry) => ({
       pid: Number(entry.ProcessId),
+      parentPid: Number(entry.ParentProcessId),
       commandLine: String(entry.CommandLine ?? ""),
     }));
   }
 
-  const output = execFileSync("ps", ["-eo", "pid=,args="], {
+  const output = execFileSync("ps", ["-eo", "pid=,ppid=,args="], {
     encoding: "utf8",
   });
 
@@ -93,16 +101,28 @@ function listProcesses() {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const match = line.match(/^(\d+)\s+(.+)$/);
+      const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/);
       if (!match) {
         return null;
       }
       return {
         pid: Number(match[1]),
-        commandLine: match[2],
+        parentPid: Number(match[2]),
+        commandLine: match[3],
       };
     })
     .filter(Boolean);
+}
+
+function getAncestorPids(processes, pid) {
+  const byPid = new Map(processes.map((processInfo) => [processInfo.pid, processInfo]));
+  const ancestors = new Set();
+  let current = byPid.get(pid);
+  while (current?.parentPid && !ancestors.has(current.parentPid)) {
+    ancestors.add(current.parentPid);
+    current = byPid.get(current.parentPid);
+  }
+  return ancestors;
 }
 
 function commandMentionsWorkspace(commandLine, root) {
@@ -111,11 +131,25 @@ function commandMentionsWorkspace(commandLine, root) {
   return normalizedCommand.includes(normalizedRoot);
 }
 
-function isNextStartServer(commandLine) {
+function isProjectDevProcess(commandLine, root) {
   const normalizedCommand = normalizeForMatch(commandLine);
+  const mentionsWorkspace = commandMentionsWorkspace(commandLine, root);
+  if (normalizedCommand.includes("scripts/dev-server.mjs")) {
+    return true;
+  }
+  if (!mentionsWorkspace) {
+    return false;
+  }
+
   return (
-    normalizedCommand.includes("node_modules/next/") &&
-    normalizedCommand.includes("dist/server/lib/start-server.js")
+    (
+      normalizedCommand.includes("node_modules/next/dist/bin/next") &&
+      normalizedCommand.includes(" dev")
+    ) ||
+    (
+      normalizedCommand.includes("node_modules/next/") &&
+      normalizedCommand.includes("dist/server/lib/start-server.js")
+    )
   );
 }
 
@@ -154,10 +188,10 @@ function getListeningPorts(pid) {
   }
 }
 
-function removeNextCache(root) {
-  const nextDir = resolve(root, ".next");
+function removeNextCache(root, distDir) {
+  const nextDir = resolve(root, distDir);
   if (!existsSync(nextDir)) {
-    console.log("No .next cache to remove.");
+    console.log(`No ${distDir} cache to remove.`);
     return;
   }
 
@@ -165,12 +199,27 @@ function removeNextCache(root) {
     throw new Error(`Refusing to remove path outside workspace: ${nextDir}`);
   }
 
-  if (basename(nextDir) !== ".next") {
+  if (basename(nextDir) !== distDir) {
     throw new Error(`Refusing to remove unexpected path: ${nextDir}`);
   }
 
   rmSync(nextDir, { recursive: true, force: true });
-  console.log("Removed .next cache.");
+  console.log(`Removed ${distDir} cache.`);
+}
+
+function getNextCacheIssue(root, distDir) {
+  const nextDir = resolve(root, distDir);
+  if (!existsSync(nextDir)) {
+    return null;
+  }
+
+  const requiredFiles = [
+    "package.json",
+    "routes-manifest.json",
+    "build-manifest.json",
+  ];
+  const missing = requiredFiles.filter((file) => !existsSync(resolve(nextDir, file)));
+  return missing.length > 0 ? `missing ${missing.join(", ")}` : null;
 }
 
 function asArray(value) {

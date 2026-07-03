@@ -10,6 +10,14 @@ import Link from "next/link";
 import type { CompanyBrief } from "../lib/types";
 import type { Opportunity as ApiOpportunity } from "../api/opportunities/route";
 import { buildCampaignPedestrianContext, PEDESTRIAN_CONTEXT_STORAGE_KEY } from "../lib/pedestrianIcp";
+import {
+  djb2,
+  focusZoom,
+  offsetPoint,
+  withPolygons,
+  STATIC_OPPORTUNITIES,
+  type OpportunityWithPolygon,
+} from "../lib/opportunityBlobs";
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -44,148 +52,11 @@ const PIN_URL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PIN_SVG)}
 
 // ─── geo helpers ───────────────────────────────────────────────────────────────
 
-type LngLat = { lng: number; lat: number };
-type Ring = [number, number][];
 type PinBusiness = { name: string; type: string; reason: string; lng: number; lat: number };
-
-function djb2(s: string): number {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h) ^ s.charCodeAt(i);
-    h = h >>> 0;
-  }
-  return h / 0xffffffff;
-}
-
-function offsetPoint(center: LngLat, distM: number, angleRad: number): [number, number] {
-  const latDeg = distM / 111320;
-  const lngDeg = distM / (111320 * Math.cos((center.lat * Math.PI) / 180));
-  return [
-    center.lng + Math.sin(angleRad) * lngDeg,
-    center.lat + Math.cos(angleRad) * latDeg,
-  ];
-}
-
-function buildIrregularPolygon(center: LngLat, baseRadiusM: number, seed: string, rays = 28): Ring {
-  const pA = djb2(seed) * Math.PI * 2;
-  const pB = djb2(seed + "b") * Math.PI * 2;
-  const pC = djb2(seed + "c") * Math.PI * 2;
-  const pD = djb2(seed + "d") * Math.PI * 2;
-
-  const ring: Ring = [];
-  for (let i = 0; i < rays; i++) {
-    const angle = (i / rays) * Math.PI * 2;
-    const noise =
-      0.18 * Math.sin(3 * angle + pA) +
-      0.10 * Math.sin(7 * angle + pB) +
-      0.06 * Math.cos(5 * angle + pC) +
-      0.04 * Math.sin(11 * angle + pD);
-    ring.push(offsetPoint(center, baseRadiusM * (1 + noise), angle));
-  }
-  ring.push(ring[0]);
-  return ring;
-}
 
 // ─── opportunity data ──────────────────────────────────────────────────────────
 
-type Opportunity = ApiOpportunity & { polygon: Ring };
-
-const STATIC_FALLBACK: Omit<Opportunity, "polygon">[] = [
-  {
-    id: "soma-finance",
-    title: "SoMa SaaS Finance Cluster",
-    kind: "Account concentration",
-    area: "4th St near Caltrain",
-    timing: "Morning commute",
-    summary: "Dense SaaS and fintech office cluster with repeat commute exposure.",
-    accounts: 31,
-    events: 2,
-    placements: 4,
-    score: 96,
-    creativeAngle: "Finance teams should close month before the ride home.",
-    icpFit: "Ramp fit: primary Tech & SaaS match; finance-ops buyer signal near 4th St.",
-    matchReasons: ["primary Tech & SaaS match", "finance-ops buyer signal"],
-    matchedBusinesses: [
-      { name: "SaaS offices near Caltrain", type: "Software company", reason: "primary Tech & SaaS match" },
-      { name: "Finance ops teams", type: "Corporate office", reason: "finance-ops buyer signal" },
-    ],
-    billboards: [],
-    centroid: { lng: -122.3964, lat: 37.7775 },
-    radiusM: 520,
-  },
-  {
-    id: "dreamforce-cfo",
-    title: "Dreamforce CFO Blitz",
-    kind: "Local event",
-    area: "Moscone Center",
-    timing: "Event week",
-    summary: "Finance leaders and RevOps teams cluster around Moscone during sessions.",
-    accounts: 47,
-    events: 5,
-    placements: 8,
-    score: 92,
-    creativeAngle: "Built for finance leaders scaling on Salesforce.",
-    icpFit: "Ramp fit: event-week SaaS and finance-ops density near Moscone Center.",
-    matchReasons: ["primary Tech & SaaS match", "finance-ops buyer signal"],
-    matchedBusinesses: [
-      { name: "Moscone SaaS attendees", type: "Software company", reason: "primary Tech & SaaS match" },
-      { name: "Finance leaders", type: "Corporate office", reason: "finance-ops buyer signal" },
-    ],
-    billboards: [],
-    centroid: { lng: -122.4019, lat: 37.7843 },
-    radiusM: 480,
-  },
-  {
-    id: "fidi-conquest",
-    title: "FiDi Competitor Conquest",
-    kind: "Competitor corridor",
-    area: "Market St and FiDi",
-    timing: "Weekday lunch",
-    summary: "Target accounts and competitor offices overlap near high-footfall corridors.",
-    accounts: 24,
-    events: 1,
-    placements: 5,
-    score: 88,
-    creativeAngle: "Outgrow the spend stack your competitor still uses.",
-    icpFit: "Ramp fit: Tech & SaaS offices and B2B office context along Market St.",
-    matchReasons: ["primary Tech & SaaS match", "B2B office/context signal"],
-    matchedBusinesses: [
-      { name: "Market St software offices", type: "Software company", reason: "primary Tech & SaaS match" },
-      { name: "FiDi corporate offices", type: "Corporate office", reason: "B2B office/context signal" },
-    ],
-    billboards: [],
-    centroid: { lng: -122.4000, lat: 37.7909 },
-    radiusM: 420,
-  },
-  {
-    id: "mission-hiring",
-    title: "Mission Hiring Signal",
-    kind: "Talent and recruiting",
-    area: "Mission corridor",
-    timing: "Evening foot traffic",
-    summary: "Startup employees and engineering candidates concentrate near transit and venues.",
-    accounts: 18,
-    events: 3,
-    placements: 3,
-    score: 81,
-    creativeAngle: "Build the finance stack before the team doubles.",
-    icpFit: "Ramp fit: startup and hiring signals around the Mission corridor.",
-    matchReasons: ["primary Tech & SaaS match", "people/talent buyer signal"],
-    matchedBusinesses: [
-      { name: "Mission startup offices", type: "Software company", reason: "primary Tech & SaaS match" },
-      { name: "Hiring signal cluster", type: "Employment agency", reason: "people/talent buyer signal" },
-    ],
-    billboards: [],
-    centroid: { lng: -122.4194, lat: 37.7599 },
-    radiusM: 460,
-  },
-];
-
-function withPolygons(raw: Omit<Opportunity, "polygon">[]): Opportunity[] {
-  return raw.map((o) => ({ ...o, polygon: buildIrregularPolygon(o.centroid, o.radiusM, o.id) }));
-}
-
-const STATIC_OPPORTUNITIES = withPolygons(STATIC_FALLBACK);
+type Opportunity = OpportunityWithPolygon;
 
 function projectedBlobLabelPoint(map: mapboxgl.Map, opportunity: Opportunity): { x: number; y: number } {
   const points = opportunity.polygon.map(([lng, lat]) => map.project([lng, lat]));
@@ -216,11 +87,6 @@ function strokeColor(selected: boolean, pulse: number): Rgba {
 }
 
 // ─── page ──────────────────────────────────────────────────────────────────────
-
-function focusZoom(radiusM: number): number {
-  const radius = Math.max(260, radiusM);
-  return Math.max(13.8, Math.min(15.35, 15.25 - Math.log2(radius / 320) * 0.62));
-}
 
 function focusMapOnOpportunity(map: mapboxgl.Map, opportunity: Opportunity, duration: number) {
   map.stop();
@@ -506,57 +372,59 @@ export default function SightlinePage() {
         )}
       </div>
 
-      <OptionsPanel
-        opportunities={opportunities}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-      />
-
-      {opportunities.length > 0 && (
-        <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/72 px-2 py-1 shadow-2xl backdrop-blur-md">
-          <button
-            type="button"
-            onClick={() => stepOpportunity(-1)}
-            disabled={opportunities.length < 2}
-            className="grid h-8 w-8 place-items-center rounded-full text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-white/70"
-            aria-label="Previous blob"
-          >
-            {"<"}
-          </button>
-          <span className="min-w-14 text-center text-xs font-bold tabular-nums text-white">
-            {selectedIndex + 1}/{opportunities.length}
-          </span>
-          <button
-            type="button"
-            onClick={() => stepOpportunity(1)}
-            disabled={opportunities.length < 2}
-            className="grid h-8 w-8 place-items-center rounded-full text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-white/70"
-            aria-label="Next blob"
-          >
-            {">"}
-          </button>
-          <span className="h-5 w-px bg-white/12" />
-          <Link
-            href="/map"
-            onClick={() => {
-              if (selected) {
-                localStorage.setItem("orangeboard:campaign-blob", JSON.stringify(selected.polygon));
-                localStorage.setItem(
-                  PEDESTRIAN_CONTEXT_STORAGE_KEY,
-                  JSON.stringify(
-                    buildCampaignPedestrianContext({
-                      companyName: campaignBrief?.identity.companyName,
-                      icp: campaignBrief?.audience.description,
-                      opportunity: selected,
-                    }),
-                  ),
-                );
-              }
-            }}
-            className="inline-flex h-8 items-center justify-center rounded-full bg-orange-500 px-3 text-xs font-semibold text-white transition hover:bg-orange-600"
-          >
-            Build Campaign
-          </Link>
+      {selected && opportunities.length > 0 && (
+        <div className="absolute bottom-5 left-1/2 z-30 w-[min(720px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-white/15 bg-black/72 shadow-2xl backdrop-blur-md">
+          <div className="flex items-stretch gap-1 p-1.5">
+            <button
+              type="button"
+              onClick={() => stepOpportunity(-1)}
+              disabled={opportunities.length < 2}
+              className="grid w-9 shrink-0 place-items-center rounded-lg text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-white/70"
+              aria-label="Previous option"
+            >
+              {"<"}
+            </button>
+            <OpportunitySummary
+              opportunity={selected}
+              index={selectedIndex}
+              total={opportunities.length}
+            />
+            <button
+              type="button"
+              onClick={() => stepOpportunity(1)}
+              disabled={opportunities.length < 2}
+              className="grid w-9 shrink-0 place-items-center rounded-lg text-sm font-bold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-white/70"
+              aria-label="Next option"
+            >
+              {">"}
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+            <span className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-white/42">
+              {selected.area}
+            </span>
+            <Link
+              href="/map?campaign=1"
+              onClick={() => {
+                if (selected) {
+                  localStorage.setItem("orangeboard:campaign-blob", JSON.stringify(selected.polygon));
+                  localStorage.setItem(
+                    PEDESTRIAN_CONTEXT_STORAGE_KEY,
+                    JSON.stringify(
+                      buildCampaignPedestrianContext({
+                        companyName: campaignBrief?.identity.companyName,
+                        icp: campaignBrief?.audience.description,
+                        opportunity: selected,
+                      }),
+                    ),
+                  );
+                }
+              }}
+              className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-orange-500 px-3 text-xs font-semibold text-white transition hover:bg-orange-600"
+            >
+              Build Campaign
+            </Link>
+          </div>
         </div>
       )}
     </main>
@@ -583,135 +451,83 @@ function opportunitySignals(opportunity: Opportunity, limit = 3): string[] {
   return signals.slice(0, limit);
 }
 
-function OptionsPanel({
-  opportunities,
-  selectedId,
-  onSelect,
+function OpportunitySummary({
+  opportunity,
+  index,
+  total,
 }: {
-  opportunities: Opportunity[];
-  selectedId: string;
-  onSelect: (id: string) => void;
+  opportunity: Opportunity;
+  index: number;
+  total: number;
 }) {
+  const businesses = opportunityBusinesses(opportunity, 3);
+  const signals = opportunitySignals(opportunity);
+  const topReason = opportunity.matchReasons[0] ?? opportunity.icpFit;
+
   return (
-    <div className="absolute bottom-6 left-6 z-20 max-h-[min(520px,calc(100vh-3rem))] w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-white/10 bg-black/58 shadow-xl backdrop-blur-md"
-      style={{ animation: "slide-up 0.2s ease" }}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
-        <div>
-          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-white/70">
-            Options
+    <div className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.045] px-3 py-2.5 text-left" title={topReason}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/72">
+              {index + 1}/{total}
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/42">
+              {ratingLabel(opportunity.score)}
+            </span>
+          </div>
+          <h2 className="mt-1 truncate text-sm font-semibold text-white/92">
+            {opportunity.title}
           </h2>
+          <p className="mt-0.5 truncate text-[10px] text-white/40">
+            {opportunity.accounts} acct &middot; {opportunity.events} evt &middot; {opportunity.placements} boards
+          </p>
         </div>
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/60">
-          {opportunities.length}
+        <span className="min-w-9 rounded-full bg-orange-400/15 px-2 py-1 text-center text-sm font-bold tabular-nums text-orange-200">
+          {opportunity.score}
         </span>
       </div>
 
-      <div className="max-h-[min(470px,calc(100vh-7.5rem))] space-y-1 overflow-y-auto p-1.5">
-        {opportunities.map((opportunity, index) => {
-          const selected = opportunity.id === selectedId;
-          const topReason = opportunity.matchReasons[0] ?? opportunity.icpFit;
-          const businesses = opportunityBusinesses(opportunity, selected ? 4 : 2);
-          const signals = opportunitySignals(opportunity);
-
-          return (
-            <button
-              key={opportunity.id}
-              type="button"
-              onClick={() => onSelect(opportunity.id)}
-              className={
-                "block w-full rounded-md border px-2.5 py-2 text-left transition " +
-                (selected
-                  ? "border-orange-400/55 bg-orange-500/12"
-                  : "border-transparent bg-white/[0.045] hover:border-white/10 hover:bg-white/[0.075]")
-              }
-              title={topReason}
-            >
-              <div className="flex items-center gap-2.5">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold tabular-nums text-white/55">
-                  {index + 1}
-                </span>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-xs font-semibold text-white/90">
-                        {opportunity.title}
-                      </h3>
-                      <p className="mt-0.5 truncate text-[10px] text-white/38">
-                        {opportunity.accounts} acct &middot; {opportunity.events} evt &middot; {opportunity.placements} boards
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/42">
-                        {ratingLabel(opportunity.score)}
-                      </span>
-                      <span className="min-w-8 rounded-full bg-orange-400/15 px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-orange-200">
-                        {opportunity.score}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-orange-400"
-                      style={{ width: `${Math.max(0, Math.min(100, opportunity.score))}%` }}
-                    />
-                  </div>
-
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {signals.slice(0, selected ? 3 : 2).map((signal) => (
-                      <span
-                        key={signal}
-                        className="rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[9px] font-semibold text-white/52"
-                      >
-                        {signal}
-                      </span>
-                    ))}
-                  </div>
-
-                  {businesses.length > 0 && (
-                    <div className={selected ? "mt-2 space-y-1.5" : "mt-1 truncate text-[10px] text-white/45"}>
-                      {selected ? (
-                        businesses.map((business) => (
-                          <div
-                            key={`${opportunity.id}-${business.name}`}
-                            className="rounded-md border border-white/10 bg-black/18 px-2 py-1.5"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="truncate text-[11px] font-semibold text-white/82">
-                                {business.name}
-                              </span>
-                              <span className="shrink-0 rounded bg-orange-400/15 px-1.5 py-0.5 text-[9px] font-bold text-orange-200">
-                                ICP
-                              </span>
-                            </div>
-                            <p className="mt-0.5 truncate text-[10px] text-white/45">
-                              {business.type}
-                            </p>
-                            <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-white/58">
-                              {business.reason}
-                            </p>
-                          </div>
-                        ))
-                      ) : (
-                        <span>{businesses.map((business) => business.name).join(", ")}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full bg-orange-400"
+          style={{ width: `${Math.max(0, Math.min(100, opportunity.score))}%` }}
+        />
       </div>
 
-      <style>{`
-        @keyframes slide-up {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {signals.map((signal) => (
+          <span
+            key={signal}
+            className="max-w-full truncate rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[9px] font-semibold text-white/55"
+          >
+            {signal}
+          </span>
+        ))}
+      </div>
+
+      {businesses.length > 0 && (
+        <div className="mt-2 grid gap-1 sm:grid-cols-3">
+          {businesses.map((business) => (
+            <div
+              key={`${opportunity.id}-${business.name}`}
+              className="min-w-0 rounded-md border border-white/10 bg-black/18 px-2 py-1.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="truncate text-[11px] font-semibold text-white/82">
+                  {business.name}
+                </span>
+                <span className="shrink-0 rounded bg-orange-400/15 px-1.5 py-0.5 text-[9px] font-bold text-orange-200">
+                  ICP
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-[10px] text-white/45">
+                {business.type}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

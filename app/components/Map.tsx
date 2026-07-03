@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback, type CSSProperties } from "react";
 import type { PickingInfo, Layer } from "@deck.gl/core";
-import { ScatterplotLayer, LineLayer, SolidPolygonLayer } from "@deck.gl/layers";
+import { ScatterplotLayer, LineLayer, PathLayer, SolidPolygonLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
 import { Map as MapboxMap, useControl, type MapRef } from "react-map-gl/mapbox";
 import mapboxgl from "mapbox-gl";
@@ -24,6 +24,7 @@ import { environmentLook, fetchCurrentConditions, type CurrentConditions } from 
 import { projectBillboardCorners } from "../lib/projectBillboard";
 import { drawHeatmap, drawScanpath } from "../lib/canvasDraw";
 import type { AgentVisionReportInput, CampaignReportInput, TargetAccountInput, VisionReportInput } from "../lib/campaignReport";
+import { djb2, focusZoom, offsetPoint, type OpportunityWithPolygon } from "../lib/opportunityBlobs";
 import type { AttentionSimResult, CompanyBrief, Region, SaliencyResult, SceneElement, VlmPerception } from "../lib/types";
 import {
   type SimAgent, type RoadNet, type PedWeight, type MuniVehicle,
@@ -60,6 +61,8 @@ const DEFAULT_CREATIVE = "/sample-creative.svg";
 const CAMPAIGN_BLOB_KEY = "orangeboard:campaign-blob";
 const CAMPAIGN_LAUNCH_KEY = "orangeboard:campaign-launch";
 const CAMPAIGN_TRAFFIC_BBOX_PADDING_DEG = 0.003;
+const SIM_RENDER_INTERVAL_MS = 50;
+const MAP_POINT_EPSILON = 1e-10;
 
 // Covers the entire Mercator-visible world for the blackout mask.
 const WORLD_RING: [number, number][] = [
@@ -99,6 +102,20 @@ function spawnCenterForCampaign(context: CampaignPedestrianContext | null) {
   };
 }
 
+function spawnCenterForBillboard(billboard: { lng: number; lat: number }, context: CampaignPedestrianContext | null) {
+  const campaignRadiusM = context?.radiusM ?? 360;
+  const radiusM = Math.min(620, Math.max(220, campaignRadiusM * 0.72));
+  return {
+    lng: billboard.lng,
+    lat: billboard.lat,
+    radiusDeg: Math.min(0.007, Math.max(0.0025, (radiusM * 1.15) / 111320)),
+  };
+}
+
+function hasCampaignPolygon(polygon: [number, number][] | null): boolean {
+  return Boolean(polygon && polygon.length > 2);
+}
+
 const TRAFFIC_BBOX: TrafficBbox = {
   minLng: INITIAL_VIEW_STATE.longitude - 0.04,
   maxLng: INITIAL_VIEW_STATE.longitude + 0.04,
@@ -130,6 +147,19 @@ function bboxForPolygon(polygon: [number, number][], paddingDeg = CAMPAIGN_TRAFF
     minLat: minLat - paddingDeg,
     maxLat: maxLat + paddingDeg,
   };
+}
+
+function boundsForPolygon(polygon: [number, number][]): mapboxgl.LngLatBounds | null {
+  const bounds = new mapboxgl.LngLatBounds();
+  let hasPoint = false;
+
+  for (const [lng, lat] of polygon) {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+    bounds.extend([lng, lat]);
+    hasPoint = true;
+  }
+
+  return hasPoint ? bounds : null;
 }
 
 function trafficCacheKey(bbox: TrafficBbox, clipPolygon: [number, number][] | null): string {
@@ -165,6 +195,22 @@ function applyStandardStyleConfig(map: mapboxgl.Map) {
       map.setConfigProperty("basemap", property, value);
     } catch {
       // Some Standard config options depend on the active GL/style version.
+    }
+  }
+}
+
+const MAPBOX_CAMPAIGN_LABEL_CONFIG = [
+  "showRoadLabels",
+  "showTransitLabels",
+  "showPlaceLabels",
+] as const;
+
+function setMapboxCampaignLabelsVisible(map: mapboxgl.Map, visible: boolean) {
+  for (const property of MAPBOX_CAMPAIGN_LABEL_CONFIG) {
+    try {
+      map.setConfigProperty("basemap", property, visible);
+    } catch {
+      // Standard style config support varies by Mapbox GL/style version.
     }
   }
 }
@@ -254,6 +300,40 @@ function billboardFromLaunch(launch: CampaignLaunch | null): Billboard | null {
 
 function sameBillboardLocation(a: { lng: number; lat: number }, b: { lng: number; lat: number }): boolean {
   return Math.abs(a.lng - b.lng) < 0.00002 && Math.abs(a.lat - b.lat) < 0.00002;
+}
+
+function pointOnMapSegment(point: [number, number], a: [number, number], b: [number, number]): boolean {
+  const cross = (point[0] - a[0]) * (b[1] - a[1]) - (point[1] - a[1]) * (b[0] - a[0]);
+  if (Math.abs(cross) > MAP_POINT_EPSILON) return false;
+  return (
+    point[0] >= Math.min(a[0], b[0]) - MAP_POINT_EPSILON &&
+    point[0] <= Math.max(a[0], b[0]) + MAP_POINT_EPSILON &&
+    point[1] >= Math.min(a[1], b[1]) - MAP_POINT_EPSILON &&
+    point[1] <= Math.max(a[1], b[1]) + MAP_POINT_EPSILON
+  );
+}
+
+function pointInMapPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  if (polygon.length < 3) return false;
+
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (pointOnMapSegment(point, a, b)) return true;
+
+    const crosses = (a[1] > point[1]) !== (b[1] > point[1]);
+    if (crosses) {
+      const xAtY = ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0];
+      if (point[0] < xAtY) inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+function billboardInPolygon(billboard: { lng: number; lat: number }, polygon: [number, number][]): boolean {
+  return pointInMapPolygon([billboard.lng, billboard.lat], polygon);
 }
 
 type JournalPageStatus = "rendering" | "analyzing" | "done" | "error";
@@ -391,7 +471,298 @@ function CampaignBlackoutOverlay({
   );
 }
 
-export default function Map() {
+type MapProps = {
+  /** True while the /map onboarding tutorial overlay is up — hides the map
+   *  chrome and locks clicks to the onboarding blob layer. */
+  onboardingActive?: boolean;
+  /** Opportunity blobs to render during onboarding step 3 (null = none). */
+  onboardingBlobs?: OpportunityWithPolygon[] | null;
+  selectedBlobId?: string | null;
+  onSelectBlob?: (id: string) => void;
+};
+
+type OnboardingBusinessPin = {
+  id: string;
+  zoneId: string;
+  zoneTitle: string;
+  name: string;
+  type: string;
+  reason: string;
+  lng: number;
+  lat: number;
+};
+
+type OnboardingCamera = {
+  lng: number;
+  lat: number;
+  zoom: number;
+  pitch: number;
+  bearing: number;
+};
+
+const DEFAULT_ONBOARDING_CAMERA: OnboardingCamera = {
+  lng: -122.39339186418016,
+  lat: 37.79533551339635,
+  zoom: 17.246153522785516,
+  pitch: 85,
+  bearing: -141.60000000000002,
+};
+
+function finiteLngLat(value: { lng?: number; lat?: number }): value is { lng: number; lat: number } {
+  return Number.isFinite(value.lng) && Number.isFinite(value.lat);
+}
+
+function buildOnboardingBusinessPins(blobs: OpportunityWithPolygon[] | null): OnboardingBusinessPin[] {
+  if (!blobs?.length) return [];
+
+  const seenAtCoordinate = new globalThis.Map<string, number>();
+  const pins: OnboardingBusinessPin[] = [];
+
+  for (const zone of blobs) {
+    zone.matchedBusinesses.forEach((business, index) => {
+      const seededFallback = offsetPoint(
+        zone.centroid,
+        Math.min(190, Math.max(55, zone.radiusM * 0.34)),
+        djb2(`${zone.id}:${business.name}:${index}`) * Math.PI * 2,
+      );
+      const base = finiteLngLat(business)
+        ? { lng: business.lng, lat: business.lat }
+        : { lng: seededFallback[0], lat: seededFallback[1] };
+      const coordinateKey = `${base.lng.toFixed(5)},${base.lat.toFixed(5)}`;
+      const duplicateIndex = seenAtCoordinate.get(coordinateKey) ?? 0;
+      seenAtCoordinate.set(coordinateKey, duplicateIndex + 1);
+      const coordinate = duplicateIndex === 0
+        ? [base.lng, base.lat]
+        : offsetPoint(
+            base,
+            14 + (duplicateIndex % 5) * 7,
+            (duplicateIndex * 2.399963229728653) % (Math.PI * 2),
+          );
+
+      pins.push({
+        id: `${zone.id}:${business.name}:${index}`,
+        zoneId: zone.id,
+        zoneTitle: zone.title,
+        name: business.name,
+        type: business.type,
+        reason: business.reason,
+        lng: coordinate[0],
+        lat: coordinate[1],
+      });
+    });
+  }
+
+  return pins;
+}
+
+// Onboarding zone labels — DOM chips projected onto the blob centroids (the
+// interleaved deck overlay doesn't render TextLayer reliably, and DOM chips can
+// double as tap targets). Same projection pattern as CampaignBlackoutOverlay.
+function OnboardingBlobLabels({
+  map,
+  blobs,
+  selectedId,
+  onSelect,
+}: {
+  map: mapboxgl.Map | null;
+  blobs: OpportunityWithPolygon[] | null;
+  selectedId: string | null;
+  onSelect?: (id: string) => void;
+}) {
+  const [points, setPoints] = useState<
+    { id: string; title: string; score: number; x: number; y: number }[]
+  >([]);
+
+  useEffect(() => {
+    if (!map || !blobs || blobs.length === 0) {
+      setPoints([]);
+      return;
+    }
+
+    let frameId: number | null = null;
+
+    const update = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        const canvas = map.getCanvas();
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        setPoints(
+          blobs
+            .map((o) => {
+              const point = map.project([o.centroid.lng, o.centroid.lat]);
+              return { id: o.id, title: o.title, score: o.score, x: point.x, y: point.y };
+            })
+            .filter(
+              (p) =>
+                Number.isFinite(p.x) && Number.isFinite(p.y) &&
+                p.x > -90 && p.x < width + 90 && p.y > -40 && p.y < height + 40,
+            ),
+        );
+      });
+    };
+
+    update();
+    map.on("move", update);
+    map.on("resize", update);
+    return () => {
+      map.off("move", update);
+      map.off("resize", update);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [map, blobs]);
+
+  return (
+    <>
+      {points.map((p) => {
+        const isSelected = p.id === selectedId;
+        const showLabel = Boolean(selectedId && isSelected);
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onSelect?.(p.id)}
+            aria-label={p.title}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              transform: showLabel
+                ? `translate(${p.x}px, ${p.y}px) translate(-50%, -140%)`
+                : `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`,
+              zIndex: 40,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              justifyContent: "center",
+              width: showLabel ? "auto" : 24,
+              height: showLabel ? "auto" : 24,
+              padding: showLabel ? "6px 12px" : 0,
+              borderRadius: 999,
+              border: "2.5px solid #431407",
+              background: isSelected ? "#F97316" : "#FFF9EE",
+              color: isSelected ? "#FFFFFF" : "#431407",
+              font: "800 12.5px 'Nunito', 'Quicksand', ui-rounded, system-ui, sans-serif",
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              boxShadow: "0 3px 0 #431407, 0 8px 18px rgba(20,9,2,0.35)",
+            }}
+          >
+            {showLabel ? (
+              <>
+                <span style={{ maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {p.title}
+                </span>
+                <b style={{ fontWeight: 900, color: "#FFEDD5" }}>{p.score}</b>
+              </>
+            ) : (
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: "#F97316" }} />
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function OnboardingBusinessLabels({
+  map,
+  pins,
+  selectedZoneId,
+  onSelectZone,
+}: {
+  map: mapboxgl.Map | null;
+  pins: OnboardingBusinessPin[];
+  selectedZoneId: string | null;
+  onSelectZone?: (id: string) => void;
+}) {
+  const [points, setPoints] = useState<
+    { id: string; zoneId: string; name: string; type: string; x: number; y: number }[]
+  >([]);
+
+  useEffect(() => {
+    if (!map || pins.length === 0 || !selectedZoneId) {
+      setPoints([]);
+      return;
+    }
+
+    let frameId: number | null = null;
+
+    const update = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        const canvas = map.getCanvas();
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        setPoints(
+          pins
+            .filter((pin) => pin.zoneId === selectedZoneId)
+            .map((pin) => {
+              const point = map.project([pin.lng, pin.lat]);
+              return { id: pin.id, zoneId: pin.zoneId, name: pin.name, type: pin.type, x: point.x, y: point.y };
+            })
+            .filter(
+              (p) =>
+                Number.isFinite(p.x) && Number.isFinite(p.y) &&
+                p.x > -150 && p.x < width + 150 && p.y > -50 && p.y < height + 50,
+            ),
+        );
+      });
+    };
+
+    update();
+    map.on("move", update);
+    map.on("resize", update);
+    return () => {
+      map.off("move", update);
+      map.off("resize", update);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [map, pins, selectedZoneId]);
+
+  return (
+    <>
+      {points.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => onSelectZone?.(p.zoneId)}
+          title={`${p.name} - ${p.type}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            transform: `translate(${p.x}px, ${p.y}px) translate(12px, -50%)`,
+            zIndex: 38,
+            maxWidth: 190,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            padding: "4px 8px",
+            borderRadius: 999,
+            border: "2px solid #1E3A8A",
+            background: "rgba(239,246,255,0.96)",
+            color: "#172554",
+            font: "800 10.5px 'Nunito', 'Quicksand', ui-rounded, system-ui, sans-serif",
+            cursor: "pointer",
+            boxShadow: "0 2px 0 #1E3A8A, 0 8px 16px rgba(15,23,42,0.28)",
+          }}
+        >
+          {p.name}
+        </button>
+      ))}
+    </>
+  );
+}
+
+export default function Map({
+  onboardingActive = false,
+  onboardingBlobs = null,
+  selectedBlobId = null,
+  onSelectBlob,
+}: MapProps = {}) {
   const mapRef = useRef<MapRef | null>(null);
   const creativeRef = useRef<string>(DEFAULT_CREATIVE);
   const simVisibleRef = useRef(true);
@@ -407,12 +778,17 @@ export default function Map() {
   const visionIndexRef = useRef<PedestrianVisionIndex | null>(null);
   const visionStateRef = useRef(createPedestrianVisionState());
   const campaignContextRef = useRef<CampaignPedestrianContext | null>(null);
+  const activeBillboardRef = useRef<Billboard | null>(null);
+  const campaignBlobRef = useRef<[number, number][] | null>(null);
   // Live crowd positions, written by the RAF loop and read when layers rebuild.
   const agentsRef = useRef<CrowdAgent[]>([]);
   // User-placed models (dropped by the nav spawn tools, see placeMode below)
   const spawnPedsRef = useRef<{ agent: SimAgent; profile: PedestrianProfile }[]>([]);
   const spawnBillboardsRef = useRef<{ lng: number; lat: number }[]>([]);
   const placeModeRef = useRef<"billboard" | "pedestrian" | null>(null);
+  // Onboarding state mirrored into refs so the stable deck click handler sees it.
+  const onboardingActiveRef = useRef(onboardingActive);
+  const onSelectBlobRef = useRef<MapProps["onSelectBlob"]>(onSelectBlob);
   const journalSeqRef = useRef(0);
   const enqueueJournalPageRef = useRef<(capture: PedestrianBillboardCapture, profile: PedestrianProfile) => void>(() => {});
 
@@ -448,6 +824,12 @@ export default function Map() {
   const [campaignExporting, setCampaignExporting] = useState(false);
   const [campaignExportError, setCampaignExportError] = useState<string | null>(null);
 
+  const activeBillboard = useMemo(
+    () => selected ?? billboardFromLaunch(campaignLaunch),
+    [selected, campaignLaunch],
+  );
+  const campaignAwaitingBillboard = hasCampaignPolygon(campaignBlob) && !activeBillboard;
+
   useEffect(() => {
     if (mapboxMap) return;
     let raf = 0;
@@ -475,6 +857,25 @@ export default function Map() {
   useEffect(() => { showTrafficRef.current = showTraffic; }, [showTraffic]);
   useEffect(() => { visionEnabledRef.current = visionEnabled; }, [visionEnabled]);
   useEffect(() => { placeModeRef.current = placeMode; }, [placeMode]);
+  useEffect(() => { onboardingActiveRef.current = onboardingActive; }, [onboardingActive]);
+  useEffect(() => { onSelectBlobRef.current = onSelectBlob; }, [onSelectBlob]);
+  useEffect(() => { activeBillboardRef.current = activeBillboard; }, [activeBillboard]);
+  useEffect(() => { campaignBlobRef.current = campaignBlob; }, [campaignBlob]);
+
+  useEffect(() => {
+    if (!mapboxMap) return;
+    const campaignActive = Boolean(campaignBlob && campaignBlob.length > 2);
+    const syncCampaignBasemap = () => {
+      setMapboxCampaignLabelsVisible(mapboxMap, !campaignActive);
+    };
+
+    syncCampaignBasemap();
+    mapboxMap.on("style.load", syncCampaignBasemap);
+    return () => {
+      mapboxMap.off("style.load", syncCampaignBasemap);
+      setMapboxCampaignLabelsVisible(mapboxMap, true);
+    };
+  }, [mapboxMap, campaignBlob]);
 
   const sightlineSetAtRef = useRef<number>(0);
   useEffect(() => {
@@ -611,42 +1012,22 @@ export default function Map() {
   // is even picked.
   const visionBillboards = useMemo<VisionBillboard[]>(
     () => {
-      const result: VisionBillboard[] = [];
-      const launchBillboard = billboardFromLaunch(campaignLaunch);
-      if (launchBillboard) {
-        result.push({
-          id: `campaign:${launchBillboard.id}`,
-          lng: launchBillboard.lng,
-          lat: launchBillboard.lat,
-          label: launchBillboard.name,
-          address: launchBillboard.address,
-        });
-      }
-      if (selected && !(launchBillboard && sameBillboardLocation(selected, launchBillboard))) {
-        result.push({
-          id: `selected:${selected.id}`,
-          lng: selected.lng,
-          lat: selected.lat,
-          label: selected.name,
-          address: selected.address,
-        });
-      }
-      result.push(
-        ...spawnBillboardsRef.current.map((b, i) => ({
-          id: `placed:${i}:${b.lng.toFixed(6)},${b.lat.toFixed(6)}`,
-          lng: b.lng,
-          lat: b.lat,
-          label: "Placed billboard",
-        })),
-      );
-      return result;
+      if (!activeBillboard) return [];
+      return [{
+        id: `active:${activeBillboard.id}`,
+        lng: activeBillboard.lng,
+        lat: activeBillboard.lat,
+        label: activeBillboard.name,
+        address: activeBillboard.address,
+      }];
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, campaignLaunch, placedCount],
+    [activeBillboard],
   );
 
   useEffect(() => {
     visionIndexRef.current = buildPedestrianVisionIndex(visionBillboards);
+    visionStateRef.current = createPedestrianVisionState();
+    setVisionCapture(null);
   }, [visionBillboards]);
 
   // Pick up the most recently generated creative (set by the landing flow).
@@ -699,9 +1080,18 @@ export default function Map() {
       setCampaignLaunch(null);
     }
 
+    // Only frame a single blob (black out the rest of the world) when the user
+    // arrived by deliberately launching a campaign — Build Campaign (?campaign=1)
+    // or the landing preview (?mode=...). A bare /map visit shows the entire map,
+    // even if a campaign blob from an earlier session is still cached.
+    const launchedCampaign = (() => {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("campaign") === "1" || params.has("mode");
+    })();
+
     try {
       const raw = localStorage.getItem(CAMPAIGN_BLOB_KEY);
-      if (raw) {
+      if (raw && launchedCampaign) {
         const polygon = JSON.parse(raw) as [number, number][];
         if (Array.isArray(polygon) && polygon.length > 2) {
           setCampaignBlob(polygon);
@@ -801,13 +1191,36 @@ export default function Map() {
   // RAF loop — steps pedestrian/vehicle/bus agents, writes positions into
   // agentsRef, and re-renders ~30fps so the deck layers animate.
   useEffect(() => {
-    const spawnCenter = spawnCenterForCampaign(campaignContextRef.current);
-    let cars: SimAgent[] = Array.from({ length: CAR_COUNT }, () => syntheticCar(spawnCenter));
+    const vehicleSpawnCenter = spawnCenterForCampaign(campaignContextRef.current);
+    const currentPedestrianSpawn = () => {
+      const active = activeBillboardRef.current;
+      const requiresBillboardSelection = onboardingActiveRef.current || hasCampaignPolygon(campaignBlobRef.current);
+      const enabled = !requiresBillboardSelection || Boolean(active);
+      const center = active
+        ? spawnCenterForBillboard(active, campaignContextRef.current)
+        : spawnCenterForCampaign(campaignContextRef.current);
+      const key = enabled
+        ? `${active?.id ?? "ambient"}:${center.lng.toFixed(6)}:${center.lat.toFixed(6)}:${center.radiusDeg.toFixed(6)}`
+        : "disabled";
+      return { enabled, center, key };
+    };
+    const spawnPedestrians = (center: ReturnType<typeof spawnCenterForCampaign>, net: RoadNet | null) =>
+      Array.from(
+        { length: net ? targetPedCount() : PED_COUNT },
+        () => net
+          ? spawnRoadPed(net, pedWeightsRef.current, center)
+          : syntheticPed(center),
+      );
+    const initialPedestrianSpawn = currentPedestrianSpawn();
+    let cars: SimAgent[] = Array.from({ length: CAR_COUNT }, () => syntheticCar(vehicleSpawnCenter));
     let buses: SimAgent[] = syntheticBuses();
-    let peds: SimAgent[] = Array.from({ length: PED_COUNT }, () => syntheticPed(spawnCenter));
+    let peds: SimAgent[] = initialPedestrianSpawn.enabled
+      ? spawnPedestrians(initialPedestrianSpawn.center, null)
+      : [];
     let pedProfiles: PedestrianProfile[] = peds.map((a) =>
       samplePedestrianProfile(a.lng, a.lat, campaignContextRef.current),
     );
+    let pedSpawnKey = initialPedestrianSpawn.key;
     let useRoadNet = false;
     let lastDensityCheck = 0;
     let lastProfileRefresh = 0;
@@ -820,16 +1233,34 @@ export default function Map() {
 
     function tick() {
       const now = performance.now();
+      if (document.visibilityState === "hidden") {
+        lastT = now;
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const dt = Math.min(now - lastT, 100); // cap to avoid jumps after tab switch
       lastT = now;
       const net = roadNetRef.current;
+      const pedSpawn = currentPedestrianSpawn();
+
+      const resetPeds = () => {
+        peds = pedSpawn.enabled ? spawnPedestrians(pedSpawn.center, net) : [];
+        pedProfiles = peds.map((a) =>
+          samplePedestrianProfile(a.lng, a.lat, campaignContextRef.current),
+        );
+        prevPedPositions = [];
+      };
+
+      if (pedSpawn.key !== pedSpawnKey) {
+        pedSpawnKey = pedSpawn.key;
+        resetPeds();
+      }
 
       // One-time upgrade: migrate cars + peds to road-constrained once network loads
       if (!useRoadNet && net) {
         useRoadNet = true;
-        cars = Array.from({ length: targetCarCount() }, () => spawnRoadCar(net, spawnCenter));
-        peds = Array.from({ length: targetPedCount() }, () => spawnRoadPed(net, pedWeightsRef.current, spawnCenter));
-        pedProfiles = peds.map((a) => samplePedestrianProfile(a.lng, a.lat, campaignContextRef.current));
+        cars = Array.from({ length: targetCarCount() }, () => spawnRoadCar(net, vehicleSpawnCenter));
+        resetPeds();
       }
 
       // Merge live Muni buses once available; keep synthetic until then
@@ -842,13 +1273,18 @@ export default function Map() {
         lastDensityCheck = now;
         const tc = targetCarCount();
         if (cars.length > tc) cars.splice(tc);
-        else while (cars.length < tc) cars.push(spawnRoadCar(net, spawnCenter));
-        const tp = targetPedCount();
-        if (peds.length > tp) { peds.splice(tp); pedProfiles.splice(tp); }
-        else while (peds.length < tp) {
-          const ped = spawnRoadPed(net, pedWeightsRef.current, spawnCenter);
-          peds.push(ped);
-          pedProfiles.push(samplePedestrianProfile(ped.lng, ped.lat, campaignContextRef.current));
+        else while (cars.length < tc) cars.push(spawnRoadCar(net, vehicleSpawnCenter));
+        if (!pedSpawn.enabled) {
+          peds = [];
+          pedProfiles = [];
+        } else {
+          const tp = targetPedCount();
+          if (peds.length > tp) { peds.splice(tp); pedProfiles.splice(tp); }
+          else while (peds.length < tp) {
+            const ped = spawnRoadPed(net, pedWeightsRef.current, pedSpawn.center);
+            peds.push(ped);
+            pedProfiles.push(samplePedestrianProfile(ped.lng, ped.lat, campaignContextRef.current));
+          }
         }
       }
 
@@ -963,8 +1399,8 @@ export default function Map() {
       }
       agentsRef.current = agents;
 
-      // Throttle React re-renders to ~30fps; the sim itself runs every frame.
-      if (now - lastRender > 33) {
+      // Throttle React re-renders; the sim itself runs every frame.
+      if (now - lastRender > SIM_RENDER_INTERVAL_MS) {
         lastRender = now;
         setFrame((f) => (f + 1) % 1_000_000);
       }
@@ -976,21 +1412,51 @@ export default function Map() {
   }, []);
 
   // Combined billboard list for the mesh layer — inventory + user-placed.
+  const visibleBillboards = useMemo<Billboard[]>(
+    () => {
+      const visiblePolygon = campaignBlob && campaignBlob.length > 2 ? campaignBlob : null;
+      if (!visiblePolygon) return billboards;
+      return billboards.filter((b) => billboardInPolygon(b, visiblePolygon));
+    },
+    [billboards, campaignBlob],
+  );
+
+  useEffect(() => {
+    const visiblePolygon = campaignBlob && campaignBlob.length > 2 ? campaignBlob : null;
+    if (!visiblePolygon || !selected || billboardInPolygon(selected, visiblePolygon)) return;
+    setSelected(null);
+  }, [campaignBlob, selected]);
+
   const billboardPoints = useMemo<BillboardPoint[]>(
     () => {
+      if (onboardingActive) return [];
+      const visiblePolygon = campaignBlob && campaignBlob.length > 2 ? campaignBlob : null;
+      const activeBillboardIsVisible = activeBillboard
+        ? !visiblePolygon || billboardInPolygon(activeBillboard, visiblePolygon)
+        : false;
+      if (visiblePolygon) {
+        return activeBillboard && activeBillboardIsVisible
+          ? [{ id: `active:${activeBillboard.id}`, lng: activeBillboard.lng, lat: activeBillboard.lat }]
+          : [];
+      }
       const launchBillboard = billboardFromLaunch(campaignLaunch);
-      const launchedBillboards = launchBillboard && !billboards.some((b) => sameBillboardLocation(b, launchBillboard))
+      const launchedBillboards = launchBillboard && !visibleBillboards.some((b) => sameBillboardLocation(b, launchBillboard))
         ? [{ id: `campaign:${launchBillboard.id}`, lng: launchBillboard.lng, lat: launchBillboard.lat }]
         : [];
       return [
         ...launchedBillboards,
-        ...billboards.map((b, i) => ({ id: `inv:${i}:${b.lng.toFixed(6)},${b.lat.toFixed(6)}`, lng: b.lng, lat: b.lat })),
+        ...visibleBillboards.map((b) => ({ id: b.id, lng: b.lng, lat: b.lat })),
         ...spawnBillboardsRef.current.map((b, i) => ({ id: `placed:${i}:${b.lng.toFixed(6)},${b.lat.toFixed(6)}`, lng: b.lng, lat: b.lat })),
       ];
     },
     // placedCount drives re-evaluation when user drops a new billboard
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [billboards, campaignLaunch, placedCount],
+    [visibleBillboards, campaignLaunch, placedCount, campaignBlob, activeBillboard, onboardingActive],
+  );
+
+  const onboardingBusinessPins = useMemo(
+    () => buildOnboardingBusinessPins(onboardingBlobs),
+    [onboardingBlobs],
   );
 
   // Rebuild deck layers from the latest agents / billboards / flow. Recomputed
@@ -1035,17 +1501,26 @@ export default function Map() {
     ls.push(
       new ScatterplotLayer<Billboard>({
         id: "billboard-dots",
-        data: billboards,
+        data: visibleBillboards,
         getPosition: (b) => [b.lng, b.lat],
         radiusUnits: "pixels",
-        getRadius: 4,
+        getRadius: (b) => activeBillboard && sameBillboardLocation(b, activeBillboard) ? 7 : 4,
         radiusMinPixels: 3,
-        radiusMaxPixels: 8,
-        getFillColor: [249, 115, 22, 230],
+        radiusMaxPixels: 10,
+        getFillColor: (b) => activeBillboard && sameBillboardLocation(b, activeBillboard)
+          ? [255, 255, 255, 255]
+          : [249, 115, 22, 230],
         stroked: true,
-        getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 1.5,
+        getLineColor: (b) => activeBillboard && sameBillboardLocation(b, activeBillboard)
+          ? [249, 115, 22, 255]
+          : [255, 255, 255, 255],
+        lineWidthMinPixels: activeBillboard ? 2 : 1.5,
         pickable: true,
+        updateTriggers: {
+          getRadius: [activeBillboard],
+          getFillColor: [activeBillboard],
+          getLineColor: [activeBillboard],
+        },
       })
     );
 
@@ -1076,7 +1551,7 @@ export default function Map() {
       ls.push(
         new SolidPolygonLayer<{ polygon: [number, number][][] }>({
           id: "campaign-blackout",
-          data: [{ polygon: [WORLD_RING, [...campaignBlob]] }],
+          data: [{ polygon: [WORLD_RING, [...campaignBlob].reverse()] }],
           getPolygon: (d) => d.polygon,
           extruded: false,
           getFillColor: [13, 14, 20, 252],
@@ -1090,13 +1565,81 @@ export default function Map() {
       ls.push(...trafficLayers);
     }
 
+    // Onboarding step 3 — the candidate opportunity blobs the user picks from.
+    // depthCompare 'always' so they read as UI over the 3D buildings.
+    if (onboardingBlobs && onboardingBlobs.length > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 625);
+      ls.push(
+        new SolidPolygonLayer<OpportunityWithPolygon>({
+          id: "onboarding-blob-fill",
+          data: onboardingBlobs,
+          getPolygon: (o) => o.polygon,
+          getFillColor: (o) => [249, 115, 22, o.id === selectedBlobId ? 118 : 56],
+          extruded: false,
+          pickable: true,
+          parameters: { depthCompare: "always", depthWriteEnabled: false },
+          updateTriggers: { getFillColor: [selectedBlobId] },
+        }),
+        new PathLayer<OpportunityWithPolygon>({
+          id: "onboarding-blob-outline",
+          data: onboardingBlobs,
+          getPath: (o) => o.polygon,
+          getWidth: (o) => (o.id === selectedBlobId ? 4 : 2.5),
+          widthUnits: "pixels",
+          getColor: (o) => [
+            249, 115, 22,
+            o.id === selectedBlobId ? Math.round(190 + 55 * pulse) : Math.round(120 + 60 * pulse),
+          ],
+          pickable: false,
+          parameters: { depthCompare: "always", depthWriteEnabled: false },
+          updateTriggers: { getColor: [selectedBlobId, frame], getWidth: [selectedBlobId] },
+        }),
+      );
+    }
+
+    if (onboardingBusinessPins.length > 0) {
+      ls.push(
+        new ScatterplotLayer<OnboardingBusinessPin>({
+          id: "onboarding-business-pins",
+          data: onboardingBusinessPins,
+          getPosition: (pin) => [pin.lng, pin.lat, 10],
+          radiusUnits: "pixels",
+          getRadius: (pin) => (pin.zoneId === selectedBlobId ? 7 : 4.5),
+          radiusMinPixels: 4,
+          radiusMaxPixels: 10,
+          getFillColor: (pin) => (pin.zoneId === selectedBlobId ? [37, 99, 235, 250] : [239, 246, 255, 238]),
+          stroked: true,
+          getLineColor: (pin) => (pin.zoneId === selectedBlobId ? [255, 255, 255, 255] : [30, 58, 138, 245]),
+          lineWidthMinPixels: 2,
+          pickable: true,
+          parameters: { depthCompare: "always", depthWriteEnabled: false },
+          updateTriggers: {
+            getRadius: [selectedBlobId],
+            getFillColor: [selectedBlobId],
+            getLineColor: [selectedBlobId],
+          },
+        }),
+      );
+    }
+
     return ls;
     // `frame` drives the per-frame recompute; agentsRef is read fresh each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame, billboards, showTraffic, placedCount, visionCapture, campaignBlob]);
+  }, [frame, visibleBillboards, showTraffic, placedCount, visionCapture, campaignBlob, onboardingBlobs, onboardingBusinessPins, selectedBlobId, activeBillboard]);
 
   // deck.gl click — handles placement tools and opening a sign panel.
   const handleDeckClick = useCallback((info: PickingInfo) => {
+    // During onboarding the map only answers blob taps — no placement tools,
+    // no billboard panels.
+    if (onboardingActiveRef.current) {
+      if (info.layer?.id?.startsWith("onboarding-blob") && info.object) {
+        onSelectBlobRef.current?.((info.object as OpportunityWithPolygon).id);
+      }
+      if (info.layer?.id === "onboarding-business-pins" && info.object) {
+        onSelectBlobRef.current?.((info.object as OnboardingBusinessPin).zoneId);
+      }
+      return;
+    }
     const mode = placeModeRef.current;
     if (mode && info.coordinate) {
       const [lng, lat] = info.coordinate as [number, number];
@@ -1115,25 +1658,34 @@ export default function Map() {
       return;
     }
     if (info.object && info.layer?.id === "billboard-dots") {
-      setSelected(info.object as Billboard);
+      const billboard = info.object as Billboard;
+      setSelected(billboard);
+      visionStateRef.current = createPedestrianVisionState();
+      setVisionCapture(null);
+      if (hasCampaignPolygon(campaignBlobRef.current)) {
+        simVisibleRef.current = true;
+        visionEnabledRef.current = true;
+        setSimVisible(true);
+        setVisionEnabled(true);
+      }
     }
   }, []);
 
   // Billboard focus cycler — mirrors the sightline blob stepper. The active sign
   // index is derived from `selected` so clicking a dot and cycling stay in sync.
   const selectedIndex = useMemo(
-    () => (selected ? billboards.findIndex((b) => sameBillboardLocation(b, selected)) : -1),
-    [selected, billboards],
+    () => (selected ? visibleBillboards.findIndex((b) => sameBillboardLocation(b, selected)) : -1),
+    [selected, visibleBillboards],
   );
 
   const stepBillboard = useCallback(
     (direction: -1 | 1) => {
-      if (!billboards.length) return;
+      if (!visibleBillboards.length) return;
       const base = selectedIndex >= 0 ? selectedIndex : direction === 1 ? -1 : 0;
-      const nextIndex = (base + direction + billboards.length) % billboards.length;
-      setSelected(billboards[nextIndex]);
+      const nextIndex = (base + direction + visibleBillboards.length) % visibleBillboards.length;
+      setSelected(visibleBillboards[nextIndex]);
     },
-    [billboards, selectedIndex],
+    [visibleBillboards, selectedIndex],
   );
 
   // Frame the focused sign when it changes (dot click or cycler), the same way
@@ -1225,7 +1777,11 @@ export default function Map() {
     if (campaignExporting) return;
     setCampaignExportError(null);
 
-    const reportBillboard = selected ?? billboardFromLaunch(campaignLaunch) ?? billboards[0] ?? null;
+    const campaignNeedsExplicitBillboard = hasCampaignPolygon(campaignBlob) && !billboardFromLaunch(campaignLaunch);
+    const reportBillboard =
+      selected ??
+      billboardFromLaunch(campaignLaunch) ??
+      (campaignNeedsExplicitBillboard ? null : visibleBillboards[0] ?? billboards[0] ?? null);
     if (!reportBillboard) {
       setCampaignExportError("Select a billboard before exporting the campaign PDF.");
       return;
@@ -1292,7 +1848,7 @@ export default function Map() {
     } finally {
       setCampaignExporting(false);
     }
-  }, [billboards, brief, campaignContext, campaignExporting, campaignLaunch, creative, journalPages, selected]);
+  }, [billboards, brief, campaignBlob, campaignContext, campaignExporting, campaignLaunch, creative, journalPages, selected, visibleBillboards]);
 
   const onMapLoad = useCallback((e: { target: mapboxgl.Map }) => {
     const map = e.target;
@@ -1315,6 +1871,91 @@ export default function Map() {
       duration: 1100,
     });
   }, [campaignLaunch, campaignPreviewMode, mapboxMap]);
+
+  useEffect(() => {
+    const launchBillboard = billboardFromLaunch(campaignLaunch);
+    if (!mapboxMap || launchBillboard || !campaignBlob || campaignBlob.length < 3) return;
+
+    const bounds = boundsForPolygon(campaignBlob);
+    if (!bounds) return;
+
+    mapboxMap.fitBounds(bounds, {
+      padding: { top: 120, right: 120, bottom: 120, left: 120 },
+      maxZoom: 16.8,
+      pitch: 68,
+      bearing: INITIAL_VIEW_STATE.bearing,
+      duration: 0,
+      essential: true,
+    });
+  }, [campaignBlob, campaignLaunch, mapboxMap]);
+
+  // Onboarding steps 1 and 2 keep the city almost fully zoomed in behind the
+  // mascot/dialog. Step 3 owns its own wider camera once blobs are available.
+  useEffect(() => {
+    if (
+      !mapboxMap ||
+      !onboardingActive ||
+      (onboardingBlobs && onboardingBlobs.length > 0)
+    ) return;
+
+    mapboxMap.stop();
+    mapboxMap.easeTo({
+      center: [DEFAULT_ONBOARDING_CAMERA.lng, DEFAULT_ONBOARDING_CAMERA.lat],
+      zoom: DEFAULT_ONBOARDING_CAMERA.zoom,
+      pitch: DEFAULT_ONBOARDING_CAMERA.pitch,
+      bearing: DEFAULT_ONBOARDING_CAMERA.bearing,
+      duration: 900,
+      essential: true,
+    });
+  }, [mapboxMap, onboardingActive, onboardingBlobs]);
+
+  // Onboarding step 3 camera — pull back to frame every candidate blob, then
+  // dive onto whichever one the user taps. Extra bottom padding keeps the blobs
+  // clear of the tutorial speech bubble.
+  useEffect(() => {
+    if (!mapboxMap || !onboardingBlobs || onboardingBlobs.length === 0) return;
+
+    const selectedZone = selectedBlobId
+      ? onboardingBlobs.find((o) => o.id === selectedBlobId)
+      : null;
+
+    if (selectedZone) {
+      mapboxMap.stop();
+      mapboxMap.easeTo({
+        center: [selectedZone.centroid.lng, selectedZone.centroid.lat],
+        zoom: focusZoom(selectedZone.radiusM),
+        pitch: 55,
+        bearing: INITIAL_VIEW_STATE.bearing,
+        duration: 900,
+        essential: true,
+      });
+      return;
+    }
+
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const zone of onboardingBlobs) {
+      for (const [lng, lat] of zone.polygon) bounds.extend([lng, lat]);
+    }
+    // The tutorial bubble sits bottom-left, so bias the framing up and right —
+    // scaled to the viewport so small screens don't over-pad.
+    const canvas = mapboxMap.getCanvas();
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    mapboxMap.stop();
+    mapboxMap.fitBounds(bounds, {
+      padding: {
+        top: Math.round(Math.min(90, height * 0.1)),
+        right: Math.round(Math.min(90, width * 0.08)),
+        bottom: Math.round(Math.min(300, height * 0.36)),
+        left: Math.round(Math.min(230, width * 0.2)),
+      },
+      maxZoom: 15,
+      pitch: 45,
+      bearing: INITIAL_VIEW_STATE.bearing,
+      duration: 1400,
+      essential: true,
+    });
+  }, [mapboxMap, onboardingBlobs, selectedBlobId]);
 
   const icpAgentCount = agentsRef.current.reduce((total, agent) => total + (agent.isIcp ? 1 : 0), 0);
   const campaignPedestrianLabel = campaignContext?.area ?? campaignContext?.title ?? "campaign";
@@ -1350,21 +1991,39 @@ export default function Map() {
       </MapboxMap>
 
       <BillboardMeshLayer billboards={billboardPoints} map={mapboxMap} />
-      <CampaignBlackoutOverlay map={mapboxMap} polygon={campaignBlob} />
 
-      <MapNav
-        showTraffic={showTraffic}
-        showJournal={showJournal}
-        campaignBusy={campaignExporting}
-        onToggleTraffic={() => {
-          if (campaignPreviewMode) startCampaignSimulation();
-          else setShowTraffic((v) => !v);
-        }}
-        onToggleJournal={() => setShowJournal((v) => !v)}
-        onOpenCampaign={exportCampaignPackage}
-      />
+      {onboardingActive && (
+        <>
+          <OnboardingBusinessLabels
+            map={mapboxMap}
+            pins={onboardingBusinessPins}
+            selectedZoneId={selectedBlobId}
+            onSelectZone={onSelectBlob}
+          />
+          <OnboardingBlobLabels
+            map={mapboxMap}
+            blobs={onboardingBlobs}
+            selectedId={selectedBlobId}
+            onSelect={onSelectBlob}
+          />
+        </>
+      )}
 
-      {count !== null && (
+      {!onboardingActive && (
+        <MapNav
+          showTraffic={showTraffic}
+          showJournal={showJournal}
+          campaignBusy={campaignExporting}
+          onToggleTraffic={() => {
+            if (campaignPreviewMode) startCampaignSimulation();
+            else setShowTraffic((v) => !v);
+          }}
+          onToggleJournal={() => setShowJournal((v) => !v)}
+          onOpenCampaign={exportCampaignPackage}
+        />
+      )}
+
+      {!onboardingActive && count !== null && (
         <div
           style={{
             position: "absolute",
@@ -1392,7 +2051,7 @@ export default function Map() {
           Cycling focuses a sign (opening the Street View panel on the right) and
           flies the camera to it. Default exploration only; campaign mode drives
           its own focus. */}
-      {!campaignLaunch && billboards.length > 0 && (
+      {!onboardingActive && !campaignLaunch && visibleBillboards.length > 0 && (
         <div
           style={{
             position: "absolute",
@@ -1429,7 +2088,7 @@ export default function Map() {
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {selectedIndex >= 0 ? selectedIndex + 1 : "–"}/{billboards.length}
+            {selectedIndex >= 0 ? selectedIndex + 1 : "–"}/{visibleBillboards.length}
           </span>
           <button
             type="button"
@@ -1487,7 +2146,7 @@ export default function Map() {
       )}
 
       {/* Traffic simulation legend + toggle */}
-      {!campaignPreviewMode && (
+      {!campaignPreviewMode && !onboardingActive && (
       <div
         style={{
           position: "absolute",
@@ -1521,7 +2180,12 @@ export default function Map() {
           </button>
         </div>
         {([
-          { color: "#ffecd2", label: "Pedestrians", n: PED_COUNT, note: "SFMTA-weighted" },
+          {
+            color: "#ffecd2",
+            label: "Pedestrians",
+            n: campaignAwaitingBillboard ? 0 : PED_COUNT,
+            note: campaignAwaitingBillboard ? "pick a board" : "SFMTA-weighted",
+          },
           ...(campaignContext
             ? [{ color: "#f97316", label: "ICP / employees", n: icpAgentCount, note: campaignPedestrianLabel }]
             : []),
@@ -1542,6 +2206,28 @@ export default function Map() {
           </div>
         )}
       </div>
+      )}
+
+      {campaignAwaitingBillboard && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 162,
+            left: 16,
+            maxWidth: 250,
+            zIndex: 35,
+            borderRadius: 10,
+            background: "rgba(15,23,42,0.9)",
+            color: "#fbbf24",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+            padding: "8px 11px",
+            fontSize: 11,
+            fontWeight: 750,
+            lineHeight: 1.35,
+          }}
+        >
+          Click a billboard dot in this zone to spawn pedestrians.
+        </div>
       )}
 
       {error && (
@@ -1589,14 +2275,14 @@ export default function Map() {
         </div>
       )}
 
-      {visionCapture && (
+      {!onboardingActive && visionCapture && (
         <PedestrianCaptureToast
           capture={visionCapture}
           onClose={() => setVisionCapture(null)}
         />
       )}
 
-      {showJournal && (
+      {!onboardingActive && showJournal && (
         <PedestrianVisionJournal
           pages={journalPages}
           activeId={activeJournalId}
@@ -1609,7 +2295,7 @@ export default function Map() {
         />
       )}
 
-      {selected && (
+      {!onboardingActive && selected && (
         <div
           style={{
             position: "absolute",

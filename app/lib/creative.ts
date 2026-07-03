@@ -3,56 +3,98 @@ import type { CompanyBrief } from "./types";
 /* Shared creative helpers: a prompt builder for image models and a
    deterministic SVG billboard generator used when no image API is configured. */
 
+// Convert hex color codes to natural language so the model doesn't render them
+// as text. Ported from sightline's generate-creative route.
 export function hexToColorName(hex?: string): string {
   if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return "a deep brand color";
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
+  const h = hex.replace("#", "").toLowerCase();
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2 / 255;
-  const lightness = l < 0.2 ? "deep " : l < 0.4 ? "dark " : l > 0.85 ? "light " : "";
-  if (max - min <= 10 || (max === 0 ? 0 : (max - min) / max) < 0.08) return `${lightness}gray`;
-  if (r > 180 && g > 150 && b < 110) return `${lightness}yellow`;
+
+  // Named color shortcuts for common brand colors
+  const named: Record<string, string> = {
+    "ffe500": "vivid electric yellow", "ffff00": "pure yellow", "ff0000": "bold red",
+    "000000": "pure black", "ffffff": "pure white", "0000ff": "pure blue",
+    "ff6600": "vivid orange", "00ff00": "pure green", "ff69b4": "hot pink",
+    "1a1a2e": "deep navy", "2d7dff": "bright blue", "28b487": "teal green",
+  };
+  if (named[h]) return named[h];
+
+  const lightness = l < 0.2 ? "deep " : l < 0.4 ? "dark " : l > 0.8 ? "light " : l > 0.9 ? "pale " : "";
+  if (max === min) return `${lightness}gray`;
   if (r > g && r > b) return g > b * 1.3 ? `${lightness}warm orange` : `${lightness}red`;
   if (g > r && g > b) return r > b * 1.1 ? `${lightness}yellow-green` : `${lightness}green`;
   if (b > r && b > g) return r > g * 1.1 ? `${lightness}purple` : `${lightness}blue`;
-  return `${lightness}yellow`;
+  if (r > b && g > b) return `${lightness}yellow`;
+  if (r > g && b > g) return `${lightness}magenta`;
+  return `${lightness}cyan`;
 }
 
 function validHex(hex?: string): string | undefined {
   return hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toUpperCase() : undefined;
 }
 
-function palettePrompt(brief: CompanyBrief): string {
-  const primary = validHex(brief.visualSystem.primaryColor);
-  const secondary = validHex(brief.visualSystem.secondaryColor);
-  const accents = (brief.visualSystem.accentColors ?? []).map(validHex).filter((hex): hex is string => Boolean(hex));
-  const palette = [...new Set([primary, secondary, ...accents].filter((hex): hex is string => Boolean(hex)))];
-
-  if (!palette.length) return "Use a deep, distinctive brand-color palette.";
-  const named = palette.map((hex) => `${hexToColorName(hex)} (${hex})`);
-  if (named.length === 1) return `Use a palette dominated by ${named[0]}.`;
-  return `Use the brand palette explicitly: primary ${named[0]}, secondary ${named[1]}, with accents ${named.slice(2).join(", ") || "kept minimal"}.`;
+function stripHexCodes(prompt: string): string {
+  return prompt.replace(/#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g, (match) => {
+    const full = match.length === 4
+      ? `#${match[1]}${match[1]}${match[2]}${match[2]}${match[3]}${match[3]}`
+      : match;
+    return hexToColorName(full);
+  });
 }
 
-/** Prompt for a 16:9 landscape billboard creative from a brief. */
+// Soften negative phrasing that image providers tend to reject or render
+// literally. Ported from sightline's cleanProviderPrompt.
+function cleanProviderPrompt(prompt: string): string {
+  return stripHexCodes(prompt)
+    .replace(/\b(no|without)\s+(?:text|letters|logos?|words?)(?:\s*,?\s*(?:or\s+)?(?:text|letters|logos?|words?))*\b/gi, "clean brand-safe scene")
+    .replace(/\b(no|without)\s+(text|letters|logos?|words?)\b/gi, "clean brand-safe scene")
+    .replace(/\b(where|space)\s+white\s+text\s+will\s+be\s+printed\b/gi, "reserved for later design overlay")
+    .replace(/\bthe\s+ad\s+fails\b/gi, "the composition should stay clean")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const SIGHTLINE_IMAGE_CREATIVE_ANGLE =
+  "direct-response billboard, clear commercial offer, high contrast focal product moment, strong urgency";
+
+function addSightlineCreativeAngle(prompt: string): string {
+  return cleanProviderPrompt(
+    `${prompt} Creative strategy: ${SIGHTLINE_IMAGE_CREATIVE_ANGLE}. Make this concept visually distinct from other campaign variants.`
+  );
+}
+
+/** Prompt for a 16:9 landscape billboard creative from a brief.
+ *  Mirrors sightline's first image prompt: buildPrompt (image mode)
+ *  plus the Conversion creative angle. */
 export function buildCreativePrompt(brief: CompanyBrief): string {
+  const color = brief.visualSystem.primaryColor
+    ? hexToColorName(brief.visualSystem.primaryColor)
+    : "brand color";
   const company = brief.identity.companyName;
   const desc = brief.identity.description || brief.identity.industry;
-  const style = brief.visualSystem.styleReference ?? "modern premium commercial";
+  const cta = brief.campaign.callToAction ? `. CTA: "${brief.campaign.callToAction}"` : "";
+  const positioning = brief.strategy?.positioning ? ` Positioning: ${brief.strategy.positioning}.` : "";
+  const promise = brief.strategy?.customerPromise ? ` Customer promise: ${brief.strategy.customerPromise}.` : "";
+  const audience = brief.audience?.description ? ` Audience: ${brief.audience.description}.` : "";
+  const proof = brief.strategy?.proofPoints?.length
+    ? ` Proof cues: ${brief.strategy.proofPoints.slice(0, 3).join("; ")}.`
+    : "";
+  const mandatories = brief.strategy?.creativeMandatories?.length
+    ? ` Creative mandatories: ${brief.strategy.creativeMandatories.slice(0, 3).join("; ")}.`
+    : "";
   const tagline = brief.identity.tagline ? ` — "${brief.identity.tagline}"` : "";
-  const cta = brief.campaign.callToAction ? ` Energy of the CTA "${brief.campaign.callToAction}".` : "";
-  const audience = brief.audience.description || "the target audience";
   const avoid = brief.visualSystem.avoidList?.length
     ? ` Do not show: ${brief.visualSystem.avoidList.join(", ")}.`
     : "";
-  return [
-    `Bold, striking 16:9 out-of-home billboard ad for ${company}${tagline}, ${desc}.`,
-    `${style} visual style. ${palettePrompt(brief)}`,
-    `Scene evokes ${audience} — vivid and emotionally charged.${cta}${avoid}`,
-    `No text or letters anywhere in the image; leave clean negative space for a later headline overlay.`,
-  ].join(" ");
+
+  return addSightlineCreativeAngle(cleanProviderPrompt(
+    `Make a 16:9 ad for ${company}${tagline}, ${desc}.${positioning}${promise}${audience}${proof}${mandatories} Main color is ${color}${cta}.${avoid} No text in the image.`
+  ));
 }
 
 function esc(s: string): string {
