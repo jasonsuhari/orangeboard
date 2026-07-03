@@ -512,7 +512,7 @@ export default function VisionStudio() {
             </p>
             <p className="mt-1 text-xs text-neutral-500">
               The VLM auto-detects the board and everything else fighting for the eye; then we measure
-              how fast each viewer's gaze lands on it.
+              how fast each viewer&apos;s gaze lands on it.
             </p>
             <div className="mt-3 space-y-2">
               {(agents.length ? agents : AGENT_PERSONAS.map(stub)).map((a) => (

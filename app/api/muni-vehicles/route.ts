@@ -57,20 +57,34 @@ function parseNextBusXML(xml: string): MuniVehicle[] {
 
 // ── 511.org SIRI JSON parser ──────────────────────────────────────────────────
 
-function parseSIRI(data: Record<string, unknown>): MuniVehicle[] {
-  try {
-    const activities = (
-      (data as any)?.Siri?.ServiceDelivery
-        ?.VehicleMonitoringDelivery?.[0]
-        ?.VehicleActivity ?? []
-    ) as any[];
+type SiriVehicleJourney = {
+  VehicleLocation?: { Latitude?: string | number; Longitude?: string | number };
+  Bearing?: string | number;
+  VehicleRef?: string | number;
+  LineRef?: string | number;
+};
 
-    return activities.flatMap((a: any) => {
+type SiriPayload = {
+  Siri?: {
+    ServiceDelivery?: {
+      VehicleMonitoringDelivery?: Array<{
+        VehicleActivity?: Array<{ MonitoredVehicleJourney?: SiriVehicleJourney }>;
+      }>;
+    };
+  };
+};
+
+function parseSIRI(data: SiriPayload): MuniVehicle[] {
+  try {
+    const activities =
+      data?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery?.[0]?.VehicleActivity ?? [];
+
+    return activities.flatMap((a) => {
       const j = a?.MonitoredVehicleJourney;
       if (!j) return [];
-      const lat = parseFloat(j.VehicleLocation?.Latitude ?? "");
-      const lng = parseFloat(j.VehicleLocation?.Longitude ?? "");
-      const bearing = parseFloat(j.Bearing ?? "0");
+      const lat = parseFloat(String(j.VehicleLocation?.Latitude ?? ""));
+      const lng = parseFloat(String(j.VehicleLocation?.Longitude ?? ""));
+      const bearing = parseFloat(String(j.Bearing ?? "0"));
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
       if (!inSF(lat, lng)) return [];
       return [{
@@ -98,8 +112,8 @@ export async function GET() {
         signal: AbortSignal.timeout(8_000),
       });
       if (res.ok) {
-        const data = await res.json();
-        const vehicles = parseSIRI(data as Record<string, unknown>);
+        const data = (await res.json()) as SiriPayload;
+        const vehicles = parseSIRI(data);
         if (vehicles.length > 0) return NextResponse.json(vehicles);
       }
     }
