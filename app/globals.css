@@ -152,6 +152,154 @@ body {
   animation: hover-drift 5.5s ease-in-out infinite;
 }
 
+/* ── Isometric city (landing hero scene) ─────────────────────────────
+   All motion is transform/opacity only so the diorama stays on the GPU.
+   The global reduced-motion rule below freezes everything; movers carry an
+   inline mid-path transform as their resting pose for that case. */
+
+/* Pedestrians: one shared keyframe walks every figure — each mover supplies
+   its route through CSS vars and fades at both ends of the sidewalk. */
+@keyframes iso-stroll {
+  0% {
+    transform: translate(var(--iso-x0), var(--iso-y0));
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--iso-x1), var(--iso-y1));
+    opacity: 0;
+  }
+}
+
+.iso-mover {
+  animation: iso-stroll var(--iso-dur, 30s) linear var(--iso-delay, 0s) infinite;
+  will-change: transform, opacity;
+}
+
+/* Gait bob — walkers amble, runners pump (shorter --iso-gait). */
+@keyframes iso-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.3px);
+  }
+}
+
+.iso-bob {
+  animation: iso-bob var(--iso-gait, 0.58s) ease-in-out infinite;
+}
+
+/* Wheelchair wheels rolling. */
+@keyframes iso-roll {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.iso-roll {
+  animation: iso-roll 2.6s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Traffic signals on a shared 14s clock: red → green → a brief amber. */
+@keyframes iso-lamp-red {
+  0%,
+  42% {
+    opacity: 1;
+  }
+  46%,
+  96% {
+    opacity: 0.14;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes iso-lamp-green {
+  0%,
+  44% {
+    opacity: 0.14;
+  }
+  48%,
+  86% {
+    opacity: 1;
+  }
+  90%,
+  100% {
+    opacity: 0.14;
+  }
+}
+
+@keyframes iso-lamp-amber {
+  0%,
+  86% {
+    opacity: 0.14;
+  }
+  88%,
+  94% {
+    opacity: 1;
+  }
+  98%,
+  100% {
+    opacity: 0.14;
+  }
+}
+
+.iso-lamp-red {
+  animation: iso-lamp-red 14s linear infinite;
+}
+
+.iso-lamp-green {
+  animation: iso-lamp-green 14s linear infinite;
+}
+
+.iso-lamp-amber {
+  animation: iso-lamp-amber 14s linear infinite;
+}
+
+/* Billboard creative rotation — the second ad crossfades over the first. */
+@keyframes iso-ad {
+  0%,
+  44% {
+    opacity: 0;
+  }
+  52%,
+  92% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.iso-ad {
+  animation: iso-ad 16s ease-in-out infinite;
+}
+
+/* Warm interior windows breathing at dusk. */
+@keyframes iso-window {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.iso-window {
+  animation: iso-window var(--iso-flick, 4s) ease-in-out infinite;
+}
+
 /* Focus ring — visible on keyboard, quiet on mouse. */
 :focus-visible {
   outline: 2px solid #ffffff;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import IsometricCity from "./components/IsometricCity";
 import WaitlistForm from "./components/WaitlistForm";
 
 /* Fine film grain — kept subtle and blended so it reads as texture, not noise. */
@@ -89,6 +90,16 @@ export default function Home() {
             "linear-gradient(180deg, rgba(90,22,0,0.35) 0%, rgba(239,76,0,0.06) 16%, rgba(239,76,0,0.5) 36%, rgba(239,76,0,0.94) 48%, #ef4c00 60%)",
         }}
       />
+
+      {/* The city the boards live in — an isometric diorama seated stage
+          right, under the atmosphere layers so it takes the same grade as
+          the rest of the scene. On phones it recedes into the sky area. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-[4] overflow-hidden">
+        <IsometricCity
+          className="animate-fade-up absolute top-[1.5%] right-[-4vw] w-[94vw] max-w-none opacity-85 sm:-bottom-[5%] sm:-right-[3vw] sm:top-auto sm:w-[min(72vw,1040px)] sm:opacity-100"
+          style={{ animationDelay: "380ms" }}
+        />
+      </div>
 
       {/* Film grain — the finishing texture over everything. */}
       <div
