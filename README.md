@@ -268,12 +268,16 @@ Labels use `ui-monospace` at `8.5px`, uppercase, with restrained white surfaces,
 ## Getting Started
 
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local   # fill in NEXT_PUBLIC_MAPBOX_TOKEN at minimum
 npm install
 npm run dev
 ```
 
 Open http://localhost:3000.
+
+Before committing: `npm run typecheck && npm run lint`. Engineering conventions,
+the architecture map, and the full environment-variable reference live in
+[AGENTS.md](AGENTS.md).
 
 ---
 
