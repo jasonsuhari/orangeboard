@@ -4,10 +4,9 @@ import { billboardSvgDataUrl, buildCreativePrompt } from "../../lib/creative";
 
 export const maxDuration = 300;
 
-const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
-// Live path favours speed: a fast model at low quality. The high-quality
-// gpt-image-2 path is reserved for the precomputed cache (see scripts/build-brief-cache.mjs).
-const LIVE_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL_LIVE ?? process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-1";
+const OPENAI_IMAGE_URL = process.env.OPENAI_IMAGE_ENDPOINT ?? "https://api.openai.com/v1/images/generations";
+// Direct GPT Image model selection uses the Image API generations endpoint.
+const LIVE_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL_LIVE ?? process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
 const LIVE_IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY_LIVE ?? "low";
 
 /** Call OpenAI image generation and return a data URL (b64), so the browser

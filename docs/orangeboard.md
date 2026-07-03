@@ -59,7 +59,7 @@ The hackathon was the forcing function to prove the full loop end to end — fro
 - `@huggingface/transformers` for in-browser ML (saliency)
 
 **AI & vision**
-- OpenAI — `gpt-4o` vision for attention scoring, `gpt-image-1` for creative generation
+- OpenAI — `gpt-4o` vision for attention scoring, `gpt-image-2` for creative generation
 - Google Street View imagery for real-scene attention testing
 
 **Automation & data**
