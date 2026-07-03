@@ -4,12 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Map from "../components/Map";
 import OnboardingDialog from "../components/OnboardingDialog";
+import { isCampaignLaunch } from "../lib/billboardModel";
 import type { OpportunityWithPolygon } from "../lib/opportunityBlobs";
-
-function isCampaignLaunch() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("campaign") === "1" || params.has("mode");
-}
 
 export default function MapPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);

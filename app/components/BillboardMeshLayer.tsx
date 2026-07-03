@@ -239,9 +239,8 @@ export default function BillboardMeshLayer({ billboards, map }: Props) {
       map.triggerRepaint()
     })
 
-    // Cast to `any` then to the interface so we can add `slot` (Standard style
-    // requires a slot for custom layers; @types/mapbox-gl omits this property).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Cast to the interface so we can add `slot` (Standard style requires a
+    // slot for custom layers; @types/mapbox-gl omits this property).
     const customLayer = {
       id: LAYER_ID,
       type: 'custom' as const,

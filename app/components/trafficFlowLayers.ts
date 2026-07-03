@@ -1,4 +1,5 @@
 import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { pointInMapPolygon } from "../lib/mapGeometry";
 import type { RoadNet, PedWeight } from "../lib/trafficSim";
 
 // Foot-traffic "flow lines" ported from sightline's TrafficFlowLayer. Each SF
@@ -124,36 +125,6 @@ function segmentIntersectsBbox(coords: [number, number][], bbox: TrafficBbox): b
   return false;
 }
 
-function pointOnSegment(point: LngLat, a: LngLat, b: LngLat): boolean {
-  const cross = (point[0] - a[0]) * (b[1] - a[1]) - (point[1] - a[1]) * (b[0] - a[0]);
-  if (Math.abs(cross) > EPSILON) return false;
-  return (
-    point[0] >= Math.min(a[0], b[0]) - EPSILON &&
-    point[0] <= Math.max(a[0], b[0]) + EPSILON &&
-    point[1] >= Math.min(a[1], b[1]) - EPSILON &&
-    point[1] <= Math.max(a[1], b[1]) + EPSILON
-  );
-}
-
-function pointInPolygon(point: LngLat, polygon: LngLat[]): boolean {
-  if (polygon.length < 3) return false;
-
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i];
-    const b = polygon[j];
-    if (pointOnSegment(point, a, b)) return true;
-
-    const crosses = (a[1] > point[1]) !== (b[1] > point[1]);
-    if (crosses) {
-      const xAtY = ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0];
-      if (point[0] < xAtY) inside = !inside;
-    }
-  }
-
-  return inside;
-}
-
 function segmentIntersectionT(a: LngLat, b: LngLat, c: LngLat, d: LngLat): number | null {
   const rx = b[0] - a[0];
   const ry = b[1] - a[1];
@@ -210,7 +181,7 @@ function clipSegmentToPolygon(a: FlowPathPoint, b: FlowPathPoint, polygon: LngLa
     const t1 = cuts[i];
     if (t1 - t0 <= 1e-7) continue;
     const mid = atT(a, b, (t0 + t1) / 2);
-    if (pointInPolygon([mid[0], mid[1]], polygon)) {
+    if (pointInMapPolygon([mid[0], mid[1]], polygon)) {
       pieces.push([atT(a, b, t0), atT(a, b, t1)]);
     }
   }
@@ -267,7 +238,7 @@ export function clipTrafficFlowToPolygon(data: TrafficFlowData, polygon: LngLat[
 
   return {
     roads,
-    points: data.points.filter((p) => pointInPolygon(p.position, ring)),
+    points: data.points.filter((p) => pointInMapPolygon(p.position, ring)),
   };
 }
 
