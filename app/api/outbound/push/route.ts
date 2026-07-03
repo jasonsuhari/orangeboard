@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { configure, integrations } from "orangeslice";
+import { escapeHtml } from "../../../lib/campaignReport/format";
+import { parseJsonBody } from "../../../lib/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,12 +80,11 @@ function configureOrangeslice() {
 }
 
 export async function POST(req: NextRequest) {
-  let body: OutboundPushRequest;
-  try {
-    body = (await req.json()) as OutboundPushRequest;
-  } catch {
+  const parsed = await parseJsonBody<OutboundPushRequest>(req);
+  if (!parsed) {
     return NextResponse.json({ configured: true, error: "Invalid request body" }, { status: 400 });
   }
+  const body = parsed.body;
 
   if (!body.provider || !["hubspot", "salesforce", "instantly"].includes(body.provider)) {
     return NextResponse.json({ configured: true, error: "Unsupported provider" }, { status: 400 });
@@ -397,13 +398,4 @@ function hubSpotNoteBody(
   ]
     .filter(Boolean)
     .join("<br />");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

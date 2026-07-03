@@ -3,6 +3,7 @@ import {
   matchBrandsToBillboard,
   type BillboardAudienceProfile,
 } from "../../../hackathon-utils/pipelines/match-brands-to-billboard";
+import { parseJsonBody } from "../../lib/server/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,12 +81,11 @@ function estimateFootTraffic(visibilityScore = 75, dwellSeconds = 12): number {
 }
 
 export async function POST(req: NextRequest) {
-  let body: OutboundRequest;
-  try {
-    body = (await req.json()) as OutboundRequest;
-  } catch {
+  const parsed = await parseJsonBody<OutboundRequest>(req);
+  if (!parsed) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+  const body = parsed.body;
 
   // Keys are required for the live pipeline. Without them, report `configured:
   // false` so the UI keeps its staged/mock queue instead of erroring.

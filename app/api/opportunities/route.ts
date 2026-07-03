@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CompanyBrief } from "../../lib/types";
+import { parseJsonBody } from "../../lib/server/http";
 import fiberData from "../../../data/billboard-fiber-businesses.json";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
 type LngLat = { lng: number; lat: number };
-type Ring = [number, number][];
 
 export interface OpportunityBillboard {
   id: string;
@@ -427,43 +427,6 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function djb2(s: string): number {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h) ^ s.charCodeAt(i);
-    h = h >>> 0;
-  }
-  return h / 0xffffffff;
-}
-
-function offsetPoint(center: LngLat, distM: number, angleRad: number): [number, number] {
-  const latDeg = distM / 111320;
-  const lngDeg = distM / (111320 * Math.cos((center.lat * Math.PI) / 180));
-  return [
-    center.lng + Math.sin(angleRad) * lngDeg,
-    center.lat + Math.cos(angleRad) * latDeg,
-  ];
-}
-
-function buildIrregularPolygon(center: LngLat, baseRadiusM: number, seed: string, rays = 28): Ring {
-  const pA = djb2(seed) * Math.PI * 2;
-  const pB = djb2(seed + "b") * Math.PI * 2;
-  const pC = djb2(seed + "c") * Math.PI * 2;
-  const pD = djb2(seed + "d") * Math.PI * 2;
-  const ring: Ring = [];
-  for (let i = 0; i < rays; i++) {
-    const angle = (i / rays) * Math.PI * 2;
-    const noise =
-      0.18 * Math.sin(3 * angle + pA) +
-      0.10 * Math.sin(7 * angle + pB) +
-      0.06 * Math.cos(5 * angle + pC) +
-      0.04 * Math.sin(11 * angle + pD);
-    ring.push(offsetPoint(center, baseRadiusM * (1 + noise), angle));
-  }
-  ring.push(ring[0]);
-  return ring;
-}
-
 // ─── clustering ───────────────────────────────────────────────────────────────
 
 interface ScoredBoard {
@@ -799,14 +762,13 @@ function buildOpportunity(
 // ─── route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  let brief: CompanyBrief;
-  try {
-    brief = (await req.json()) as CompanyBrief;
-    if (!brief?.identity?.industry) {
-      return NextResponse.json({ error: "Invalid brief" }, { status: 400 });
-    }
-  } catch {
+  const parsed = await parseJsonBody<CompanyBrief>(req);
+  if (!parsed) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const brief = parsed.body;
+  if (!brief?.identity?.industry) {
+    return NextResponse.json({ error: "Invalid brief" }, { status: 400 });
   }
 
   const profile = detectIcpProfile(brief);

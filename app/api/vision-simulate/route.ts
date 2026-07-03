@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { CompanyBrief, Region, SceneElement, VlmPerception } from "../../lib/types";
 import { heuristicPerception, heuristicStreetPerception } from "../../lib/attention";
+import { parseJsonBody } from "../../lib/server/http";
+import { callOpenAIChatJSON } from "../../lib/server/openai";
 
 export const maxDuration = 60;
 
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const VISION_MODEL = process.env.OPENAI_VISION_MODEL ?? "gpt-4o";
 
 const SYSTEM_CREATIVE = `You are a synthetic human viewer on a focus-group panel for out-of-home (billboard) testing. You are shown a billboard creative and you react the way a real person glancing at it would — fast, instinctive, honest.
@@ -116,33 +117,26 @@ async function perceiveWithOpenAI(
         .filter(Boolean)
         .join("\n");
 
-  const res = await fetch(OPENAI_CHAT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: VISION_MODEL,
-      temperature: 0.5,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: street ? SYSTEM_STREET : SYSTEM_CREATIVE },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: street ? `Analyse this street scene and react.\n${ctx}` : `Glance at this billboard and react.\n${ctx}`,
-            },
-            { type: "image_url", image_url: { url: imageUrl, detail: street ? "high" : "low" } },
-          ],
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(45_000),
+  const raw = await callOpenAIChatJSON({
+    apiKey,
+    model: VISION_MODEL,
+    temperature: 0.5,
+    timeoutMs: 45_000,
+    errorLabel: "OpenAI vision failed",
+    messages: [
+      { role: "system", content: street ? SYSTEM_STREET : SYSTEM_CREATIVE },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: street ? `Analyse this street scene and react.\n${ctx}` : `Glance at this billboard and react.\n${ctx}`,
+          },
+          { type: "image_url", image_url: { url: imageUrl, detail: street ? "high" : "low" } },
+        ],
+      },
+    ],
   });
-  if (!res.ok) throw new Error(`OpenAI vision failed: ${res.status} ${await res.text()}`);
-
-  const json = (await res.json()) as { choices: { message: { content: string } }[] };
-  const raw = json.choices?.[0]?.message?.content ?? "{}";
   const p = JSON.parse(raw) as Record<string, unknown>;
   const fb = street ? heuristicStreetPerception() : heuristicPerception(brief);
   const elements = street ? parseElements(p.elements) : [];
@@ -166,24 +160,20 @@ async function perceiveWithOpenAI(
 }
 
 export async function POST(req: NextRequest) {
-  let imageUrl: string | undefined;
-  let brief: CompanyBrief | null | undefined;
-  let mode: "creative" | "street" = "creative";
-  let context = "a quick glance from the street";
-  try {
-    const body = (await req.json()) as {
-      imageUrl?: string;
-      brief?: CompanyBrief;
-      context?: string;
-      mode?: "creative" | "street";
-    };
-    imageUrl = body.imageUrl;
-    brief = body.brief ?? null;
-    if (body.mode === "street") mode = "street";
-    if (body.context) context = body.context;
-  } catch {
+  const parsed = await parseJsonBody<{
+    imageUrl?: string;
+    brief?: CompanyBrief;
+    context?: string;
+    mode?: "creative" | "street";
+  } | null>(req);
+  if (!parsed || parsed.body === null) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+  const body = parsed.body;
+  const imageUrl = body.imageUrl;
+  const brief = body.brief ?? null;
+  const mode: "creative" | "street" = body.mode === "street" ? "street" : "creative";
+  const context = body.context || "a quick glance from the street";
 
   const apiKey = process.env.OPENAI_API_KEY;
   // VLMs take raster images; an SVG/vector data URL can't be read, so fall back.

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type { AttentionSimResult, VlmPerception } from "../../lib/types";
 import type { CampaignPedestrianContext, PedestrianProfile } from "../../lib/pedestrianIcp";
 import type { PedestrianBillboardCapture } from "../../simulation/pedestrianVision";
+import { parseJsonBody } from "../../lib/server/http";
+import { callOpenAIChatJSON } from "../../lib/server/openai";
 
 export const maxDuration = 60;
 
-const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const AGENT_MODEL = process.env.OPENAI_PED_AGENT_MODEL ?? process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 
 type PedestrianAgentLog = {
@@ -156,34 +157,26 @@ async function generateAgent({
     },
   };
 
-  const res = await fetch(OPENAI_CHAT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: AGENT_MODEL,
-      temperature: 0.65,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: JSON.stringify(prompt) },
-      ],
-    }),
-    signal: AbortSignal.timeout(45_000),
+  const content = await callOpenAIChatJSON({
+    apiKey,
+    model: AGENT_MODEL,
+    temperature: 0.65,
+    timeoutMs: 45_000,
+    errorLabel: "OpenAI pedestrian agent failed",
+    messages: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: JSON.stringify(prompt) },
+    ],
   });
-  if (!res.ok) throw new Error(`OpenAI pedestrian agent failed: ${res.status} ${await res.text()}`);
-
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = json.choices?.[0]?.message?.content ?? "{}";
   return parseAgent(JSON.parse(content), fallback, AGENT_MODEL);
 }
 
 export async function POST(req: NextRequest) {
-  let body: AgentRequestBody;
-  try {
-    body = await req.json() as AgentRequestBody;
-  } catch {
+  const parsed = await parseJsonBody<AgentRequestBody>(req);
+  if (!parsed) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+  const body = parsed.body;
 
   if (!body.profile || !body.capture || !body.perception || !body.result) {
     return NextResponse.json({ error: "Missing profile, capture, perception, or result." }, { status: 400 });

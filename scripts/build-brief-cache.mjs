@@ -659,32 +659,7 @@ async function extractPageSignals(url) {
   };
 }
 
-// ── brief (mirrors BRIEF_SYSTEM / BRIEF_SCHEMA in app/lib/companyBrief.ts) ──
-const BRIEF_SYSTEM = `You are a senior brand strategist and creative director at a top out-of-home agency. From raw signals scraped off a company's website, infer what the company actually does and write a sharp, specific billboard creative brief.
-
-Rules:
-- Use real judgement. Infer the industry, audience, and positioning from the evidence — do NOT just echo the scraped text back.
-- Every field must be DISTINCT. Never reuse the company name as the tagline or core message.
-- description: one concrete sentence on what the company does and for whom.
-- brandAdjectives: three adjectives specific to THIS brand's voice (not generic filler).
-- tagline: a real, punchy line. Max ~7 words.
-- coreMessage: the single idea someone should remember 5 seconds after passing the billboard.
-- callToAction: short and imperative (e.g. "Start free", "Book a demo").
-- audience.description: a vivid one-line demographic + psychographic, specific to this product.
-- styleReference: name a real brand whose art direction fits ("think Apple", "think Liquid Death").
-- Pick colors from the ranked brand color candidates. The first candidates are strongest.
-- Do not make black, white, or gray the primaryColor when the site has a distinctive CTA/button/link/highlight accent. In that case use the distinctive accent as primaryColor and put the dark/light base in secondaryColor.
-- Use accentColors for additional distinctive brand accents from buttons, links, gradients, highlights, or product UI. Do not include transparent shadows, borders, or generic grays.
-
-Output ONLY valid JSON matching the schema — no markdown fences, no commentary.`;
-
-const BRIEF_SCHEMA = `{
-  "identity": { "companyName": "string", "industry": "string", "description": "one sentence", "brandAdjectives": ["adj1","adj2","adj3"], "tagline": "string or null" },
-  "visualSystem": { "primaryColor": "#RRGGBB or null", "secondaryColor": "#RRGGBB or null", "accentColors": ["#RRGGBB"], "logoUrl": "absolute URL or null", "fonts": ["font name"], "styleReference": "e.g. think Apple", "avoidList": ["thing to avoid"] },
-  "campaign": { "coreMessage": "the ONE thing this ad communicates", "offerOrHook": "string or null", "callToAction": "string", "campaignObjective": "awareness | conversion | foot-traffic | app-downloads" },
-  "audience": { "description": "one sentence demographic + psychographic", "tone": "string", "contextWhenSeen": "driving | walking | scrolling | mixed" }
-}`;
-
+// ── brief (mirrors COMPREHENSIVE_BRIEF_SYSTEM / COMPREHENSIVE_BRIEF_SCHEMA in app/lib/briefPrompts.ts) ──
 const COMPREHENSIVE_BRIEF_SYSTEM = `You are a senior brand strategist and creative director at a top out-of-home agency. From raw signals scraped from a company's website, infer what the company actually does and write a comprehensive billboard creative brief.
 
 Rules:

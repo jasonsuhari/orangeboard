@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { CompanyBrief } from "../../lib/types";
 import { billboardSvgDataUrl, buildCreativePrompt } from "../../lib/creative";
+import { parseJsonBody } from "../../lib/server/http";
 
 export const maxDuration = 300;
 
@@ -34,16 +35,15 @@ async function generateWithOpenAI(brief: CompanyBrief, apiKey: string): Promise<
 }
 
 export async function POST(req: NextRequest) {
-  let brief: CompanyBrief;
-  try {
-    const body = (await req.json()) as { brief?: CompanyBrief };
-    if (!body.brief || !body.brief.identity) {
-      return NextResponse.json({ error: 'Missing "brief" field' }, { status: 400 });
-    }
-    brief = body.brief;
-  } catch {
+  const parsed = await parseJsonBody<{ brief?: CompanyBrief } | null>(req);
+  if (!parsed || parsed.body === null) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+  const body = parsed.body;
+  if (!body.brief || !body.brief.identity) {
+    return NextResponse.json({ error: 'Missing "brief" field' }, { status: 400 });
+  }
+  const brief = body.brief;
 
   // A precomputed (cached) brief already carries its high-quality creative —
   // serve it straight back instead of regenerating.

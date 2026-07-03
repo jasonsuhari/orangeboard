@@ -6,6 +6,7 @@ import {
   renderCampaignReportHtml,
   type CampaignReportInput,
 } from "../../lib/campaignReport";
+import { parseJsonBody } from "../../lib/server/http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -106,17 +107,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let input: CampaignReportInput;
-  try {
-    input = (await req.json()) as CampaignReportInput;
-    if (!input?.brief?.identity?.companyName || !input?.opportunity?.title) {
-      return NextResponse.json(
-        { error: "Missing required brief or opportunity fields" },
-        { status: 400 },
-      );
-    }
-  } catch {
+  const parsed = await parseJsonBody<CampaignReportInput>(req);
+  if (!parsed) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const input = parsed.body;
+  if (!input?.brief?.identity?.companyName || !input?.opportunity?.title) {
+    return NextResponse.json(
+      { error: "Missing required brief or opportunity fields" },
+      { status: 400 },
+    );
   }
 
   return respondWithReport(req, input);

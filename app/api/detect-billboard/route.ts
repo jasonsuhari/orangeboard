@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Region } from "../../lib/types";
+import { parseJsonBody } from "../../lib/server/http";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Billboard detection via NVIDIA NIM Grounding DINO (open-vocabulary).
@@ -97,19 +98,15 @@ function pickBox(json: unknown, w: number, h: number): { box: Region; score: num
 }
 
 export async function POST(req: NextRequest) {
-  let imageUrl: string | undefined;
-  let imageW = 0;
-  let imageH = 0;
-  let prompt = DEFAULT_PROMPT;
-  try {
-    const b = (await req.json()) as { imageUrl?: string; imageW?: number; imageH?: number; prompt?: string };
-    imageUrl = b.imageUrl;
-    imageW = b.imageW ?? 0;
-    imageH = b.imageH ?? 0;
-    if (b.prompt) prompt = b.prompt;
-  } catch {
+  const parsed = await parseJsonBody<{ imageUrl?: string; imageW?: number; imageH?: number; prompt?: string } | null>(req);
+  if (!parsed || parsed.body === null) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
+  const b = parsed.body;
+  const imageUrl = b.imageUrl;
+  const imageW = b.imageW ?? 0;
+  const imageH = b.imageH ?? 0;
+  const prompt = b.prompt || DEFAULT_PROMPT;
 
   const key = process.env.NVIDIA_API_KEY;
   if (!key || !imageUrl || !/^data:image\//i.test(imageUrl)) {
