@@ -60,10 +60,13 @@ import {
   billboardInPolygon,
   boundsForPolygon,
   hasCampaignPolygon,
+  pointInMapPolygon,
   spawnCenterForBillboard,
   spawnCenterForCampaign,
   trafficCacheKey,
 } from "../lib/mapGeometry";
+import { ensureZoneClipLayer, removeZoneClipLayer } from "../lib/zoneFocusBasemap";
+import { buildBaseplateLayers } from "./map/baseplateLayers";
 import {
   renderHeatmapJournalImage,
   renderProjectedStreetScene,
@@ -247,6 +250,21 @@ export default function Map({
     return () => {
       mapboxMap.off("style.load", syncCampaignBasemap);
       setMapboxCampaignLabelsVisible(mapboxMap, true);
+    };
+  }, [mapboxMap, campaignBlob]);
+
+  // Campaign mode: clip the basemap's 3D models + symbols outside the zone so
+  // only the focused diorama keeps its skyline (see app/lib/zoneFocusBasemap.ts).
+  // ensureZoneClipLayer swallows pre-style-load calls; the style.load listener
+  // covers both the initial load and later style reload wipes.
+  useEffect(() => {
+    if (!mapboxMap || !hasCampaignPolygon(campaignBlob) || !campaignBlob) return;
+    const sync = () => ensureZoneClipLayer(mapboxMap, campaignBlob);
+    sync();
+    mapboxMap.on("style.load", sync);
+    return () => {
+      mapboxMap.off("style.load", sync);
+      removeZoneClipLayer(mapboxMap);
     };
   }, [mapboxMap, campaignBlob]);
 
@@ -895,7 +913,12 @@ export default function Map({
     );
 
     // Pedestrians + vehicles + buses (deck column boxes — sightline approach).
-    ls.push(...buildCrowdLayers(agentsRef.current));
+    // In campaign mode only in-zone agents render: the depth-tested blackout no
+    // longer paints over out-of-zone crowd boxes, so they must not be drawn.
+    const renderAgents = campaignTrafficPolygon
+      ? agentsRef.current.filter((a) => pointInMapPolygon([a.lng, a.lat], campaignTrafficPolygon))
+      : agentsRef.current;
+    ls.push(...buildCrowdLayers(renderAgents));
 
     // Sightline ray — orange beam from pedestrian to billboard on each FOV capture.
     if (visionCapture) {
@@ -916,8 +939,15 @@ export default function Map({
     }
 
     // Black out everything outside the campaign blob if one was passed from sightline.
-    // depthCompare: 'always' so the mask covers 3D buildings, not just ground level.
+    // Depth-tested with a negative polygon offset: beats the coplanar z=0 ground
+    // everywhere (including the horizon, where a geometric z-lift would shimmer)
+    // but loses to the basemap's in-zone 3D buildings, which write real depth —
+    // that's what keeps tall buildings unsliced above the mask. Out-of-zone
+    // buildings are removed by the zone-focus clip layer, not this mask.
     if (campaignBlob && campaignBlob.length > 2) {
+      // Camera position feeds the baseplate's JS back-face culling (the memo
+      // already recomputes every sim frame, so rotation stays in sync).
+      const cameraLngLat = mapboxMap?.getFreeCameraOptions().position?.toLngLat();
       ls.push(
         new SolidPolygonLayer<{ polygon: [number, number][][] }>({
           id: "campaign-blackout",
@@ -926,8 +956,18 @@ export default function Map({
           extruded: false,
           getFillColor: [13, 14, 20, 252],
           pickable: false,
-          parameters: { depthCompare: "always", depthWriteEnabled: false },
-        })
+          parameters: {
+            depthCompare: "less-equal",
+            depthWriteEnabled: false,
+            depthBias: -2,
+            depthBiasSlopeScale: -2,
+          },
+        }),
+        // Diorama slab under the focused zone: skirt walls + orange rim.
+        ...buildBaseplateLayers(
+          campaignBlob,
+          cameraLngLat ? [cameraLngLat.lng, cameraLngLat.lat] : null,
+        ),
       );
     }
 
@@ -995,7 +1035,7 @@ export default function Map({
     return ls;
     // `frame` drives the per-frame recompute; agentsRef is read fresh each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame, visibleBillboards, showTraffic, placedCount, visionCapture, campaignBlob, onboardingBlobs, onboardingBusinessPins, selectedBlobId, activeBillboard]);
+  }, [frame, visibleBillboards, showTraffic, placedCount, visionCapture, campaignBlob, onboardingBlobs, onboardingBusinessPins, selectedBlobId, activeBillboard, mapboxMap]);
 
   // deck.gl click — handles placement tools and opening a sign panel.
   const handleDeckClick = useCallback((info: PickingInfo) => {

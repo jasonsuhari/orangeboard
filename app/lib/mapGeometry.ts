@@ -86,6 +86,28 @@ export function trafficCacheKey(bbox: TrafficBbox, clipPolygon: [number, number]
   return `${clipPolygon ? "campaign" : "default"}:${bboxKey}:${clipKey}`;
 }
 
+/** GeoJSON linear rings must be closed (first point === last); the cached
+ *  campaign blobs are stored as open rings. */
+export function closeRing(polygon: [number, number][]): [number, number][] {
+  if (polygon.length < 3) return polygon;
+  const [firstLng, firstLat] = polygon[0];
+  const [lastLng, lastLat] = polygon[polygon.length - 1];
+  if (firstLng === lastLng && firstLat === lastLat) return polygon;
+  return [...polygon, [firstLng, firstLat]];
+}
+
+/** Shoelace signed area in the lng/lat plane; > 0 means counterclockwise.
+ *  Accepts open or closed rings (the closing edge is degenerate). */
+export function ringSignedArea(ring: [number, number][]): number {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return sum / 2;
+}
+
 export function pointOnMapSegment(point: [number, number], a: [number, number], b: [number, number]): boolean {
   const cross = (point[0] - a[0]) * (b[1] - a[1]) - (point[1] - a[1]) * (b[0] - a[0]);
   if (Math.abs(cross) > MAP_POINT_EPSILON) return false;
