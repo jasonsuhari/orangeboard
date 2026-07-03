@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check, Spinner } from "./icons";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -26,7 +27,7 @@ export default function WaitlistForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: value, source: "landing" }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) throw new Error(data.error || "Something went wrong.");
       setStatus("success");
     } catch (err) {
@@ -43,9 +44,7 @@ export default function WaitlistForm() {
         aria-live="polite"
       >
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#ef4c00] shadow-[0_4px_14px_-4px_rgba(0,0,0,0.4)]">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3">
-            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <Check className="h-5 w-5" />
         </span>
         <div className="min-w-0">
           <p className="text-[15px] font-bold leading-tight">You&rsquo;re on the list.</p>
@@ -92,10 +91,7 @@ export default function WaitlistForm() {
         >
           {status === "loading" ? (
             <>
-              <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+              <Spinner className="h-4 w-4 animate-spin" trackOpacity={0.3} />
               Joining
             </>
           ) : (

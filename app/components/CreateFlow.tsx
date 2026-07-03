@@ -4,6 +4,8 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { CompanyBrief } from "../lib/types";
+import { readableOnHex, shadeHex, tintHex, validHex } from "../lib/color";
+import { Check, Spinner } from "./icons";
 import SiteScrollPreview from "./SiteScrollPreview";
 
 const Billboard3D = dynamic(() => import("./Billboard3D"), {
@@ -52,7 +54,7 @@ export default function CreateFlow() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const briefJson = await briefRes.json();
+      const briefJson = (await briefRes.json()) as { brief?: CompanyBrief; error?: string };
       if (!briefRes.ok) throw new Error(briefJson.error || "Could not read that site");
       const nextBrief = briefJson.brief as CompanyBrief;
 
@@ -69,9 +71,13 @@ export default function CreateFlow() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ brief: nextBrief }),
         });
-        const creativeJson = await creativeRes.json();
+        const creativeJson = (await creativeRes.json()) as {
+          imageUrl?: string;
+          source?: string;
+          error?: string;
+        };
         if (!creativeRes.ok) throw new Error(creativeJson.error || "Could not generate creative");
-        creative = { imageUrl: creativeJson.imageUrl, source: creativeJson.source };
+        creative = { imageUrl: creativeJson.imageUrl as string, source: creativeJson.source as string };
       }
 
       setBrief(nextBrief);
@@ -405,52 +411,6 @@ function SceneSkeleton({ label }: { label: string }) {
   );
 }
 
-function Spinner() {
-  return (
-    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function Check() {
-  return (
-    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M5 12l4 4L19 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function Dot() {
   return <span className="h-1.5 w-1.5 rounded-full bg-current" />;
-}
-
-// ─── Colour helpers ──────────────────────────────────────────────────────────
-
-function validHex(h?: string): string | undefined {
-  return h && /^#[0-9a-fA-F]{6}$/i.test(h) ? h.toUpperCase() : undefined;
-}
-
-function readableOnHex(hex: string): "#ffffff" | "#0a0a0a" {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.58 ? "#0a0a0a" : "#ffffff";
-}
-
-function shadeHex(hex: string, amt: number): string {
-  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-  const r = clamp(parseInt(hex.slice(1, 3), 16) * (1 + amt));
-  const g = clamp(parseInt(hex.slice(3, 5), 16) * (1 + amt));
-  const b = clamp(parseInt(hex.slice(5, 7), 16) * (1 + amt));
-  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function tintHex(hex: string, t: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const m = (c: number) => Math.round(c + (255 - c) * t);
-  return `#${[m(r), m(g), m(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
