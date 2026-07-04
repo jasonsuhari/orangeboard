@@ -5,10 +5,12 @@ import { Check, Spinner } from "./icons";
 
 type Status = "idle" | "loading" | "success" | "error";
 
-export default function WaitlistForm() {
+export default function WaitlistForm({ idSuffix = "" }: { idSuffix?: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
+  const emailId = `waitlist-email${idSuffix}`;
+  const hintId = `waitlist-hint${idSuffix}`;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,11 +67,11 @@ export default function WaitlistForm() {
         noValidate
         className="flex items-center gap-2 rounded-full bg-white p-1.5 pl-5 shadow-[0_30px_80px_-24px_rgba(80,18,0,0.62)] ring-1 ring-black/[0.06] transition duration-300 focus-within:shadow-[0_36px_90px_-24px_rgba(80,18,0,0.7)] focus-within:ring-2 focus-within:ring-[#0a5bff]/45"
       >
-        <label htmlFor="waitlist-email" className="sr-only">
+        <label htmlFor={emailId} className="sr-only">
           Work email
         </label>
         <input
-          id="waitlist-email"
+          id={emailId}
           type="email"
           inputMode="email"
           autoComplete="email"
@@ -77,7 +79,7 @@ export default function WaitlistForm() {
           placeholder="you@company.com"
           value={email}
           aria-invalid={invalid}
-          aria-describedby="waitlist-hint"
+          aria-describedby={hintId}
           onChange={(e) => {
             setEmail(e.target.value);
             if (status === "error") setStatus("idle");
@@ -104,7 +106,7 @@ export default function WaitlistForm() {
           )}
         </button>
       </form>
-      <p id="waitlist-hint" className="mt-3 h-4 pl-1 text-[13px] font-medium" aria-live="polite">
+      <p id={hintId} className="mt-3 h-4 pl-1 text-[13px] font-medium" aria-live="polite">
         {invalid ? (
           <span className="text-white">{error}</span>
         ) : (

@@ -46,7 +46,7 @@ export function Prism({
           px(gx + w - 0.22, gy + d - 0.22, h),
           px(gx + 0.22, gy + d - 0.22, h),
         )}
-        fill="rgba(120,40,8,0.08)"
+        fill="rgba(60,80,100,0.1)"
       />
     </g>
   );
@@ -139,12 +139,12 @@ function FloorBands({
       <polygon
         key={`l${r}`}
         points={pts(px(gx, gy + d, z), px(gx + w, gy + d, z), px(gx + w, gy + d, z - 1.6), px(gx, gy + d, z - 1.6))}
-        fill="rgba(255,240,225,0.55)"
+        fill="rgba(255,255,255,0.55)"
       />,
       <polygon
         key={`r${r}`}
         points={pts(px(gx + w, gy, z), px(gx + w, gy + d, z), px(gx + w, gy + d, z - 1.6), px(gx + w, gy, z - 1.6))}
-        fill="rgba(255,222,192,0.28)"
+        fill="rgba(235,242,248,0.28)"
       />,
     );
   }
@@ -159,7 +159,7 @@ export function Tower({
   h,
   floors,
   cols,
-  tone = "cream",
+  tone = "light",
   seed = 1,
 }: {
   gx: number;
@@ -169,13 +169,13 @@ export function Tower({
   h: number;
   floors: number;
   cols: number;
-  tone?: "cream" | "ember";
+  tone?: "light" | "slate";
   seed?: number;
 }) {
   const t =
-    tone === "cream"
-      ? { top: PAL.creamTop, lit: PAL.creamLit, shade: PAL.creamShade }
-      : { top: PAL.emberTop, lit: PAL.emberLit, shade: PAL.emberShade };
+    tone === "light"
+      ? { top: PAL.lightTop, lit: PAL.lightLit, shade: PAL.lightShade }
+      : { top: PAL.slateTop, lit: PAL.slateLit, shade: PAL.slateShade };
   return (
     <g>
       <Prism gx={gx} gy={gy} w={w} d={d} h={h} top={t.top} lit={t.lit} shade={t.shade} />
@@ -193,7 +193,7 @@ export function Apartment(props: {
   h: number;
   floors: number;
   cols: number;
-  tone?: "cream" | "ember";
+  tone?: "light" | "slate";
   seed?: number;
 }) {
   const { gx, gy, w, d, h, floors } = props;
@@ -236,7 +236,7 @@ export function Bodega({
       <polygon
         key={i}
         points={pts(p(u0, 13.5), p(u1, 13.5), p(u1, 9, 0.42), p(u0, 9, 0.42))}
-        fill={i % 2 === 0 ? "#ef5a10" : "#ffe9d6"}
+        fill={i % 2 === 0 ? "#ef5a10" : "#f6f8fa"}
       />,
     );
   }
@@ -244,19 +244,19 @@ export function Bodega({
   const slope = face === "L" ? 0.5 : -0.5;
   return (
     <g>
-      <Prism gx={gx} gy={gy} w={w} d={d} h={h} top={PAL.creamTop} lit={PAL.creamLit} shade={PAL.creamShade} />
+      <Prism gx={gx} gy={gy} w={w} d={d} h={h} top={PAL.lightTop} lit={PAL.lightLit} shade={PAL.lightShade} />
       {/* storefront glass + door */}
-      <polygon points={pts(p(0.18, 12), p(len - 0.18, 12), p(len - 0.18, 2), p(0.18, 2))} fill="rgba(70,20,2,0.42)" />
-      <polygon points={pts(p(len - 0.62, 12), p(len - 0.28, 12), p(len - 0.28, 2), p(len - 0.62, 2))} fill="#ffd2a0" opacity={0.9} />
+      <polygon points={pts(p(0.18, 12), p(len - 0.18, 12), p(len - 0.18, 2), p(0.18, 2))} fill="rgba(26,36,50,0.45)" />
+      <polygon points={pts(p(len - 0.62, 12), p(len - 0.28, 12), p(len - 0.28, 2), p(len - 0.62, 2))} fill="#ffd88a" opacity={0.9} />
       {/* sign band */}
-      <polygon points={pts(p(0.1, h - 1.5), p(len - 0.1, h - 1.5), p(len - 0.1, h - 8), p(0.1, h - 8))} fill="#3f1203" />
+      <polygon points={pts(p(0.1, h - 1.5), p(len - 0.1, h - 1.5), p(len - 0.1, h - 8), p(0.1, h - 8))} fill="#1f2833" />
       <text
         transform={`matrix(1 ${slope} 0 1 ${signMid[0].toFixed(1)} ${(signMid[1] - h + 6.3).toFixed(1)})`}
         textAnchor="middle"
         fontSize="4.6"
         fontWeight="700"
         letterSpacing="0.14em"
-        fill={PAL.creamInk}
+        fill={PAL.paleInk}
       >
         {sign}
       </text>
@@ -264,7 +264,7 @@ export function Bodega({
       {stripes}
       <polygon points={pts(p(0.1, 9, 0.42), p(len - 0.1, 9, 0.42), p(len - 0.1, 7.2, 0.42), p(0.1, 7.2, 0.42))} fill="#d84e0c" />
       {/* rooftop unit */}
-      <Prism gx={gx + w * 0.55} gy={gy + d * 0.3} w={0.45} d={0.4} h={4} top={PAL.emberTop} lit={PAL.emberLit} shade={PAL.emberShade} />
+      <Prism gx={gx + w * 0.55} gy={gy + d * 0.3} w={0.45} d={0.4} h={4} top={PAL.slateTop} lit={PAL.slateLit} shade={PAL.slateShade} />
     </g>
   );
 }
@@ -293,9 +293,9 @@ export function RooftopBillboard({ gx, gy, z }: { gx: number; gy: number; z: num
     <g>
       <polygon points={pts(p(0.42, z + 28), p(0.56, z + 28), p(0.56, z), p(0.42, z))} fill={PAL.pole} />
       <polygon points={pts(p(2.04, z + 28), p(2.18, z + 28), p(2.18, z), p(2.04, z))} fill={PAL.pole} />
-      <polygon points={pts(p(0, z + 72), p(2.6, z + 72), p(2.6, z + 24), p(0, z + 24))} fill="#fff4ea" />
+      <polygon points={pts(p(0, z + 72), p(2.6, z + 72), p(2.6, z + 24), p(0, z + 24))} fill="#f7f9fb" />
       <g>{creative("#ef5a10", 19, "#fff4ea", "peel")}</g>
-      <g className="iso-ad">{creative("#fff4ea", 13, "#ef4c00", "OOH, hi.")}</g>
+      <g className="iso-ad">{creative("#ffffff", 13, "#ef4c00", "OOH, hi.")}</g>
     </g>
   );
 }
@@ -320,11 +320,11 @@ export function WallBillboard({
   const cx = p((u0 + u1) / 2 - 0.18, (z0 + z1) / 2 + 4);
   return (
     <g>
-      <polygon points={pts(p(u0, z1), p(u1, z1), p(u1, z0), p(u0, z0))} fill="#fff4ea" />
-      <polygon points={pts(p(u0 + 0.08, z1 - 2), p(u1 - 0.08, z1 - 2), p(u1 - 0.08, z0 + 2), p(u0 + 0.08, z0 + 2))} fill="#58170a" />
+      <polygon points={pts(p(u0, z1), p(u1, z1), p(u1, z0), p(u0, z0))} fill="#f7f9fb" />
+      <polygon points={pts(p(u0 + 0.08, z1 - 2), p(u1 - 0.08, z1 - 2), p(u1 - 0.08, z0 + 2), p(u0 + 0.08, z0 + 2))} fill="#22303f" />
       <circle cx={cx[0]} cy={cx[1]} r="6.5" fill="#ef5a10" />
-      <polygon points={pts(p(u0 + 0.24, z0 + 13), p(u1 - 0.5, z0 + 13), p(u1 - 0.5, z0 + 9.5), p(u0 + 0.24, z0 + 9.5))} fill={PAL.creamInk} />
-      <polygon points={pts(p(u0 + 0.24, z0 + 8), p(u1 - 0.9, z0 + 8), p(u1 - 0.9, z0 + 5), p(u0 + 0.24, z0 + 5))} fill="rgba(255,233,214,0.55)" />
+      <polygon points={pts(p(u0 + 0.24, z0 + 13), p(u1 - 0.5, z0 + 13), p(u1 - 0.5, z0 + 9.5), p(u0 + 0.24, z0 + 9.5))} fill={PAL.paleInk} />
+      <polygon points={pts(p(u0 + 0.24, z0 + 8), p(u1 - 0.9, z0 + 8), p(u1 - 0.9, z0 + 5), p(u0 + 0.24, z0 + 5))} fill="rgba(242,245,248,0.55)" />
     </g>
   );
 }
@@ -337,8 +337,8 @@ export function StreetBillboard({ gx, gy }: { gx: number; gy: number }) {
     <g>
       <polygon points={pts(p(0.35, 22), p(0.49, 22), p(0.49, 0), p(0.35, 0))} fill={PAL.pole} />
       <polygon points={pts(p(2.01, 22), p(2.15, 22), p(2.15, 0), p(2.01, 0))} fill={PAL.pole} />
-      <polygon points={pts(p(0, 50), p(2.5, 50), p(2.5, 20), p(0, 20))} fill="#fff4ea" />
-      <polygon points={pts(p(0.09, 47.5), p(2.41, 47.5), p(2.41, 22.5), p(0.09, 22.5))} fill="#ffe3c8" />
+      <polygon points={pts(p(0, 50), p(2.5, 50), p(2.5, 20), p(0, 20))} fill="#f7f9fb" />
+      <polygon points={pts(p(0.09, 47.5), p(2.41, 47.5), p(2.41, 22.5), p(0.09, 22.5))} fill="#ffffff" />
       <text
         transform={`matrix(1 0.5 0 1 ${mid[0].toFixed(1)} ${mid[1].toFixed(1)})`}
         textAnchor="middle"

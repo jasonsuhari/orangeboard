@@ -1,14 +1,27 @@
+import Image from "next/image";
 import Link from "next/link";
 import IsometricCity from "./components/IsometricCity";
 import WaitlistForm from "./components/WaitlistForm";
-
-/* Fine film grain — kept subtle and blended so it reads as texture, not noise. */
-const GRAIN =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+import PeelScrollStage from "./components/landing/PeelScrollStage";
+import CityscapeBackdrop from "./components/landing/CityscapeBackdrop";
+import BillboardCreative from "./components/landing/BillboardCreative";
+import FinalCta from "./components/landing/FinalCta";
+import ScrollCue from "./components/landing/ScrollCue";
+import { GRAIN } from "./components/landing/stage";
 
 export default function Home() {
   return (
-    <main className="relative h-[100dvh] w-full overflow-hidden bg-[#ef4c00] font-sans text-white antialiased selection:bg-white selection:text-[#ef4c00]">
+    <main className="relative w-full bg-[#160a05] font-sans text-white antialiased selection:bg-white selection:text-[#ef4c00]">
+      {/* The scroll story: the orange hero is a poster being peeled off a
+          billboard (app/components/landing/PeelScrollStage.tsx). Everything
+          below renders inside the stage's poster layer, which supplies the
+          100dvh size, orange base, and overflow clip the <main> used to own —
+          so the hero lays out exactly as the old static page. */}
+      <PeelScrollStage
+        backdrop={<CityscapeBackdrop />}
+        underCreative={<BillboardCreative />}
+        cta={<FinalCta />}
+      >
       {/* ── Atmosphere: a cinematic golden-hour grade layered over the page.
           The stack gives the background real tonal range — luminous sky, a warm sun,
           a deep ember pool the copy sits in, a cool counter-glow where the blue
@@ -91,12 +104,13 @@ export default function Home() {
         }}
       />
 
-      {/* The city the boards live in — an isometric diorama seated stage
-          right, under the atmosphere layers so it takes the same grade as
-          the rest of the scene. On phones it recedes into the sky area. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 z-[4] overflow-hidden">
+      {/* The city the boards live in — a cool slate diorama seated stage
+          right, above the warm grade so its palette stays true against the
+          orange. Only the grain sits over it. On phones it lives in the sky
+          area above the headline. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-[6] overflow-hidden sm:flex sm:items-center">
         <IsometricCity
-          className="animate-fade-up absolute top-[1.5%] right-[-4vw] w-[94vw] max-w-none opacity-85 sm:-bottom-[5%] sm:-right-[3vw] sm:top-auto sm:w-[min(72vw,1040px)] sm:opacity-100"
+          className="animate-fade-up absolute top-[1.5%] right-[-4vw] w-[94vw] max-w-none opacity-95 sm:static sm:ml-auto sm:mr-[3vw] sm:w-[min(72vw,1040px)] sm:opacity-100"
           style={{ animationDelay: "380ms" }}
         />
       </div>
@@ -112,13 +126,33 @@ export default function Home() {
       <PeelCorner />
 
       {/* Foreground UI. */}
-      <div className="pointer-events-none relative z-10 flex h-full flex-col">
+      <div data-peel="hero-copy" className="pointer-events-none relative z-10 flex h-full flex-col">
         <header className="flex items-center justify-between px-6 py-5 sm:px-10 lg:px-16">
           <PeelWordmark />
         </header>
 
         <div className="flex flex-1 items-center px-6 sm:px-10 lg:px-16">
           <div className="max-w-xl pb-10">
+            <div
+              className="animate-rise mb-6 flex items-center gap-3"
+              style={{ animationDelay: "40ms" }}
+            >
+              <span
+                aria-hidden="true"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-[3px] border border-white/65 bg-[#ff5a00] text-[18px] font-bold leading-none text-white shadow-[0_2px_8px_-2px_rgba(60,14,0,0.6)]"
+              >
+                Y
+              </span>
+              <Link
+                href="https://vibeapps.dev/s/peel"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-white/85 underline decoration-white/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+              >
+                <span className="font-bold text-white">#1</span> in YC AI Growth Hackathon
+              </Link>
+            </div>
+
             <h1
               className="animate-rise text-[clamp(2.7rem,5.6vw,5rem)] font-bold leading-[0.95] tracking-[-0.035em] [text-wrap:balance]"
               style={{ animationDelay: "110ms" }}
@@ -149,30 +183,14 @@ export default function Home() {
             <div className="animate-rise mt-8" style={{ animationDelay: "260ms" }}>
               <WaitlistForm />
             </div>
-
-            <div
-              className="animate-rise mt-8 flex items-center gap-3"
-              style={{ animationDelay: "335ms" }}
-            >
-              <span
-                aria-hidden="true"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-[3px] border border-white/65 bg-[#ff5a00] text-[18px] font-bold leading-none text-white shadow-[0_2px_8px_-2px_rgba(60,14,0,0.6)]"
-              >
-                Y
-              </span>
-              <Link
-                href="https://vibeapps.dev/s/peel"
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-medium text-white/85 underline decoration-white/35 underline-offset-4 transition hover:text-white hover:decoration-white"
-              >
-                <span className="font-bold text-white">#1</span> in YC AI Growth Hackathon
-              </Link>
-            </div>
           </div>
         </div>
 
       </div>
+
+      {/* Invitation at the bottom edge: scrolling is what peels the poster. */}
+      <ScrollCue />
+      </PeelScrollStage>
     </main>
   );
 }
@@ -181,35 +199,18 @@ function PeelWordmark() {
   return (
     <Link
       href="/"
-      className="pointer-events-auto relative inline-flex select-none items-center"
+      className="pointer-events-auto inline-flex select-none items-center"
       aria-label="Peel home"
     >
-      <span className="relative inline-block leading-none">
-        <span className="block text-[clamp(2rem,3.4vw,2.9rem)] font-bold lowercase leading-none tracking-[-0.05em]">
-          peel
-        </span>
-        <PeelCurl className="absolute -left-[2px] -top-[0.34em] h-[0.66em] w-[0.66em]" />
-      </span>
-    </Link>
-  );
-}
-
-/* The peeling-flap accent that turns the "p" into a peel. */
-function PeelCurl({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 100 100" className={className} fill="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="peel-curl" x1="20" y1="8" x2="72" y2="92" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="0.55" stopColor="#ffe7d3" />
-          <stop offset="1" stopColor="#ffbf99" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M64 96 C40 92 22 74 22 50 C22 27 39 10 63 10 C55 22 52 33 58 44 C63 53 74 55 84 52 C74 66 60 70 50 66 C58 78 62 88 64 96 Z"
-        fill="url(#peel-curl)"
+      <Image
+        src="/peel-logo.png"
+        alt=""
+        width={937}
+        height={420}
+        priority
+        className="h-[clamp(2.4rem,3.8vw,3.2rem)] w-auto"
       />
-    </svg>
+    </Link>
   );
 }
 
@@ -218,6 +219,7 @@ function PeelCurl({ className }: { className?: string }) {
 function PeelCorner() {
   return (
     <div
+      data-peel="corner"
       aria-hidden
       className="animate-peel-lift pointer-events-none absolute -right-px -top-px z-[8] hidden h-[202px] w-[202px] md:block"
       style={{ transformOrigin: "top right" }}

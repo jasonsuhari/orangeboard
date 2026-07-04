@@ -11,8 +11,8 @@ const shots = [
 const browser = await chromium.launch();
 for (const { name, width, height } of shots) {
   const page = await browser.newPage({ viewport: { width, height } });
-  await page.goto(base, { waitUntil: "networkidle" });
-  await page.waitForTimeout(2500); // let entrance animations settle
+  await page.goto(base, { waitUntil: "load", timeout: 60000 });
+  await page.waitForTimeout(3500); // let entrance animations settle
   await page.screenshot({ path: `.codex-logs/${name}.png` });
   await page.close();
   console.log(`saved .codex-logs/${name}.png`);
