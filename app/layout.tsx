@@ -18,26 +18,91 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument",
 });
 
-const title = "Peel — Reach buyers where screens can't";
+const siteUrl =
+  (process.env.NEXT_PUBLIC_SITE_URL ?? "https://orangeboard-inky.vercel.app").replace(
+    /\/$/,
+    "",
+  );
+const title = "Peel by Orangeboard — AI Out-of-Home Advertising";
 const description =
-  "Peel finds where your accounts cluster in the real world, books the boards that reach them, and turns physical presence into pipeline.";
+  "Peel by Orangeboard maps billboard inventory, scores physical visibility, finds nearby buyers, and generates targeted out-of-home advertising campaigns.";
 
 export const metadata: Metadata = {
-  title,
+  title: {
+    default: title,
+    template: "%s | Peel by Orangeboard",
+  },
   description,
-  applicationName: "Peel",
-  metadataBase: new URL("https://peel.to"),
+  applicationName: "Peel by Orangeboard",
+  metadataBase: new URL(siteUrl),
+  authors: [
+    {
+      name: "Jason Matthew Suhari",
+      url: "https://www.jasonsuhari.com",
+    },
+  ],
+  creator: "Jason Matthew Suhari",
+  publisher: "Orangeboard",
+  keywords: [
+    "out-of-home advertising",
+    "OOH advertising",
+    "billboard advertising",
+    "AI sales automation",
+    "account-based marketing",
+    "geospatial advertising",
+    "billboard visibility analysis",
+    "Orangeboard",
+    "Peel",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   openGraph: {
     title,
     description,
-    siteName: "Peel",
+    url: "/",
+    siteName: "Peel by Orangeboard",
     type: "website",
+    images: [
+      {
+        url: "/peel-placeholder-poster.png",
+        alt: "Peel by Orangeboard billboard campaign platform",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title,
     description,
+    images: ["/peel-placeholder-poster.png"],
   },
+};
+
+const softwareApplicationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Peel by Orangeboard",
+  alternateName: "Orangeboard",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: siteUrl,
+  description,
+  creator: {
+    "@type": "Person",
+    name: "Jason Matthew Suhari",
+    url: "https://www.jasonsuhari.com",
+  },
+  featureList: [
+    "Billboard inventory mapping",
+    "Physical visibility analysis",
+    "Geospatial buyer discovery",
+    "AI campaign creative generation",
+    "Out-of-home sales automation",
+  ],
 };
 
 export const viewport: Viewport = {
@@ -52,7 +117,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
-      <body>{children}</body>
+      <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(softwareApplicationJsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
