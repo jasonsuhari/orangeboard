@@ -1,13 +1,20 @@
-# Orangeboard
+# Orangeboard / Peel
 
-**An AI sales engine for out-of-home inventory.**
+**An AI sales engine for out-of-home advertising.**
+
+[Live demo](https://orangeboard-inky.vercel.app) ·
+[3D campaign map](https://orangeboard-inky.vercel.app/map)
+
+![Peel by Orangeboard billboard campaign platform](public/peel-placeholder-poster.png)
 
 Orangeboard helps billboard owners turn physical ad inventory into qualified
 outbound campaigns. It maps each billboard, analyzes what is around it, enriches
 nearby businesses with Fiber AI, ranks who the board is relevant for, generates a
 board-specific creative mockup, and drafts the pitch.
 
-Built for the YC AI Growth Hackathon by Orange Slice.
+The product is presented as **Peel** in the live interface. Created by
+[Jason Matthew Suhari](https://www.jasonsuhari.com) for Orange Slice at the YC
+AI Growth Hackathon.
 
 ---
 
